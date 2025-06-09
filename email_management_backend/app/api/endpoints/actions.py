@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request # Added Request
 from sqlalchemy.orm import Session
 
-from app import models # For User model type hint
-from app import schemas # For Pydantic schemas
+from app import models
+from app import schemas
+from app.core.limiter import limiter # Import limiter
 from app.database import get_db
 from app.security import get_current_user
 from app.models.email_account import EmailAccount
@@ -12,8 +13,10 @@ from app.core.config import FERNET_KEY # To check if encryption is available
 
 router = APIRouter()
 
-@router.post("/send-email", status_code=status.HTTP_202_ACCEPTED) # 202 Accepted as sending is async
+@router.post("/send-email", status_code=status.HTTP_202_ACCEPTED)
+@limiter.limit("10/minute") # Apply rate limit: 10 requests per minute
 async def send_composed_email(
+    request: Request, # Added request
     composed_email: schemas.compose.EmailCompose,
     db: Session = Depends(get_db),
     current_user: models.user.User = Depends(get_current_user),

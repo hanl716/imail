@@ -28,3 +28,7 @@ CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/0
 CEREBRAS_API_KEY = os.getenv("CEREBRAS_API_KEY")
 if not CEREBRAS_API_KEY:
     print("WARNING: CEREBRAS_API_KEY not set. AI features requiring Cerebras will be disabled.")
+
+# Redis URL for general use (e.g. rate limiting, caching)
+# Using a different DB number (e.g. /1) than Celery results (e.g. /0) is good practice.
+REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/1")

@@ -1,6 +1,22 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
+from fastapi.responses import JSONResponse
+from app.services.email_connector import EmailConnectionError # Example custom error
+from app.core.limiter import limiter, RateLimitExceeded, _rate_limit_exceeded_handler # Import limiter components
 
 app = FastAPI(title="Email Management Backend API")
+app.state.limiter = limiter # Make limiter available in app state
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler) # Add handler for rate limit errors
+
+# Exception Handlers
+@app.exception_handler(EmailConnectionError)
+async def email_connection_exception_handler(request: Request, exc: EmailConnectionError):
+    # Log the full error for debugging (exc or exc.__cause__)
+    # logger.error(f"Email connection error: {exc}", exc_info=True) # Assuming logger is configured
+    print(f"Email connection error: {exc}") # Simple print for now
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={"detail": f"Email service connection error: {exc}"},
+    )
 
 # Import routers
 from app.api.endpoints import auth as auth_router

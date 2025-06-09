@@ -28,7 +28,7 @@ class ComplaintData(Base):
     summary = Column(Text, nullable=False) # AI-generated summary
     sentiment = Column(String(50), nullable=True) # e.g., "Positive", "Negative", "Neutral"
 
-    extracted_at = Column(DateTime, default=datetime.datetime.utcnow)
+    extracted_at = Column(DateTime, default=datetime.datetime.utcnow, index=True) # Added index
 
     # Relationships (optional, but can be useful)
     # email_message = relationship("EmailMessage", back_populates="complaint_suggestion_data") # Add back_populates to EmailMessage if needed

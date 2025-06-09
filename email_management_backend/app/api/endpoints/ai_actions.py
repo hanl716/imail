@@ -1,11 +1,11 @@
 import asyncio
 import json
 from typing import List, Dict, Any
-
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request # Added Request
 from sqlalchemy.orm import Session
 
-from app import models as db_models # To distinguish from Pydantic schemas
+from app import models as db_models
+from app.core.limiter import limiter # Import limiter
 from app import schemas # Pydantic schemas
 from app.database import get_db
 from app.security import get_current_user
@@ -25,12 +25,14 @@ def format_message_for_prompt(message: db_models.EmailMessage, max_body_len: int
 
 
 @router.post("/suggest-reply/{message_id}", response_model=Dict[str, List[str]])
+@limiter.limit("30/minute") # Apply rate limit: 30 requests per minute
 async def suggest_reply_for_message(
+    request: Request, # Added request
     message_id: int,
     db: Session = Depends(get_db),
     current_user: db_models.User = Depends(get_current_user),
 ):
-    if not CEREBRAS_API_KEY: # Check if AI key is configured globally
+    if not CEREBRAS_API_KEY:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="AI features are not configured on the server.",

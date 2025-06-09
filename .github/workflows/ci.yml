@@ -1,0 +1,147 @@
+name: Email Management CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint-and-test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.10'] # Consistent with Dockerfile
+        node-version: ['18.x']   # Consistent with Dockerfile
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip' # Cache pip dependencies
+        cache-dependency-path: ./email_management_backend/requirements.txt
+
+    - name: Set up Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+        cache-dependency-path: ./email_management_frontend/package-lock.json # Assumes package-lock.json is used and committed
+
+    - name: Install Python Backend Dependencies
+      working-directory: ./email_management_backend
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        # For CI, good to install test/lint tools explicitly if not in main requirements.txt
+        # pip install pytest pytest-asyncio flake8 black
+
+    - name: Lint Backend (Placeholder)
+      working-directory: ./email_management_backend
+      run: |
+        echo "TODO: Add backend linting. Example: pip install flake8 && flake8 ."
+        # flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics || true
+        # black --check . || true # Allow to pass for now
+
+    - name: Test Backend
+      working-directory: ./email_management_backend
+      # Ensure pytest is installed (either in requirements.txt or via pip install above)
+      run: |
+        pytest tests/
+
+    - name: Install Frontend Dependencies
+      working-directory: ./email_management_frontend
+      # Using npm ci for cleaner installs based on package-lock.json
+      run: npm ci
+
+    - name: Lint Frontend (Placeholder)
+      working-directory: ./email_management_frontend
+      run: |
+        echo "TODO: Add frontend linting. Example: npm run lint"
+        # Add lint script to package.json e.g., "lint": "eslint ."
+        # npm run lint || true
+
+    - name: Test Frontend (Placeholder)
+      working-directory: ./email_management_frontend
+      run: |
+        echo "TODO: Add frontend test command. Example: npm run test:unit -- --ci --watchAll=false"
+        # Ensure test:unit script in package.json correctly runs Jest/Vitest
+        # Example: "test:unit": "vue-cli-service test:unit --watchAll=false" for non-interactive CI
+        # npm run test:unit -- --ci --coverage # If coverage is desired
+
+  build-docker-images:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    needs: lint-and-test # Run only if linting and testing pass
+    # Only build and push on pushes to main, not on PRs to main for this example
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Login to Docker Hub (Example)
+      # This step should only run if you intend to push.
+      # For PRs or local testing of build, login might be skipped.
+      # Ensure DOCKERHUB_USERNAME and DOCKERHUB_TOKEN are set in GitHub secrets for the repo.
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: Build and Push Backend Image (Example)
+      uses: docker/build-push-action@v5
+      with:
+        context: ./email_management_backend
+        file: ./email_management_backend/Dockerfile
+        push: true # Set to true to push to registry; false for just build
+        tags: yourdockerusername/email-backend:latest # Replace with your actual Docker Hub username/repo
+        # For dynamic tagging (e.g., with Git SHA):
+        # tags: yourdockerusername/email-backend:${{ github.sha }}, yourdockerusername/email-backend:latest
+
+    - name: Build and Push Frontend Image (Example)
+      uses: docker/build-push-action@v5
+      with:
+        context: ./email_management_frontend
+        file: ./email_management_frontend/Dockerfile
+        push: true
+        tags: yourdockerusername/email-frontend:latest
+        # tags: yourdockerusername/email-frontend:${{ github.sha }}, yourdockerusername/email-frontend:latest
+
+    # Note: Celery worker and beat use the same backend Docker image, so no separate build needed for them.
+
+  # Placeholder for Deployment Job (Future - highly environment specific)
+  # deploy-staging:
+  #   name: Deploy to Staging
+  #   runs-on: ubuntu-latest
+  #   needs: build-docker-images # Depends on successful image build & push
+  #   if: github.event_name == 'push' && github.ref == 'refs/heads/main' # Trigger condition
+  #   environment:
+  #     name: staging
+  #     url: https://staging.your-app-url.com # Optional: Link to environment
+  #   steps:
+  #   - name: Deploy to Staging Environment (Placeholder)
+  #     # Add your deployment script/commands here
+  #     # e.g., ssh to server and docker-compose pull && docker-compose up -d
+  #     # or, helm upgrade for Kubernetes, etc.
+  #     run: echo "Deploying to Staging..."
+  #     # Example:
+  #     # - name: SSH and Deploy
+  #     #   uses: appleboy/ssh-action@master
+  #     #   with:
+  #     #     host: ${{ secrets.STAGING_HOST }}
+  #     #     username: ${{ secrets.STAGING_USERNAME }}
+  #     #     key: ${{ secrets.STAGING_SSH_KEY }}
+  #     #     script: |
+  #     #       cd /path/to/your/app
+  #     #       docker-compose pull
+  #     #       docker-compose up -d
+  #     #       echo "Deployment to Staging complete."
