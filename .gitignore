@@ -1,0 +1,59 @@
+# Docker related
+.env
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*~
+# IDE / OS specific
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Frontend specific
+email_management_frontend/node_modules/
+email_management_frontend/dist/
+email_management_frontend/.env*
+!email_management_frontend/.env.example # if you have one
+email_management_frontend/npm-debug.log*
+email_management_frontend/yarn-debug.log*
+email_management_frontend/yarn-error.log*
+
+# Backend specific
+email_management_backend/.env # Already in backend's .gitignore, but good to have root one too
+email_management_backend/venv/
+email_management_backend/.pytest_cache/
+email_management_backend/htmlcov/
+email_management_backend/.mypy_cache/
+
+# General Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+# alembic.ini is version controlled, but if you create a local alembic.ini with secrets:
+# alembic.ini.local
+
+# If you have other .env files in subdirectories not covered by the specific ones above
+**/.env
+!/.env # explicitly allow the root .env for docker-compose, if needed, but usually it's gitignored.
+# For this project, the root .env IS for docker-compose and should be ignored.
+# So, the line above is correct.
+
+# PostgreSQL data directory (if mapped outside Docker volume for some reason)
+# postgres_data/

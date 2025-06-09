@@ -1,0 +1,166 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./email_management_backend
+    container_name: email_manager_backend
+    restart: unless-stopped
+    volumes:
+      - ./email_management_backend:/app # Mount code for development; remove for production image
+    ports:
+      - "8000:8000"
+    environment:
+      # Values will be sourced from the .env file at the root
+      - DATABASE_URL=${BACKEND_DATABASE_URL}
+      - SECRET_KEY=${BACKEND_SECRET_KEY}
+      - ALGORITHM=${BACKEND_ALGORITHM}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${BACKEND_ACCESS_TOKEN_EXPIRE_MINUTES}
+      - FERNET_KEY=${BACKEND_FERNET_KEY}
+      # Environment variables for Celery if backend sends tasks
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+    depends_on:
+      db:
+        condition: service_healthy # Wait for DB to be ready
+      rabbitmq: # Added rabbitmq dependency
+        condition: service_started # Or service_healthy if rabbitmq has a healthcheck
+      redis:    # Added redis dependency
+        condition: service_started # Or service_healthy if redis has a healthcheck
+    networks:
+      - email_app_network
+
+  frontend:
+    build: ./email_management_frontend
+    container_name: email_manager_frontend
+    restart: unless-stopped
+    ports:
+      - "8080:80" # Host port 8080 maps to container Nginx port 80
+    depends_on:
+      - backend
+    networks:
+      - email_app_network
+
+  db:
+    image: postgres:15-alpine
+    container_name: email_manager_db
+    restart: unless-stopped
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      # These values will be sourced from the .env file at the root
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    ports:
+      - "5432:5432" # Expose DB port only if needed for direct access from host
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"] # Use env var here
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - email_app_network
+
+volumes:
+  postgres_data:
+  rabbitmq_data:
+  redis_data:
+  celery_beat_schedule: # For persisting Celery Beat schedule
+
+networks:
+  email_app_network:
+    driver: bridge
+
+# New services for Celery, RabbitMQ, and Redis
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: email_manager_rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"  # AMQP port
+      - "15672:15672" # Management UI port
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq/
+    environment:
+      # Default user/pass is guest/guest. For production, change this via .env
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS}
+      - RABBITMQ_DEFAULT_VHOST=/
+    networks:
+      - email_app_network
+    healthcheck: # Basic healthcheck for RabbitMQ
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: email_manager_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - email_app_network
+    healthcheck: # Basic healthcheck for Redis
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  celery_worker:
+    build: ./email_management_backend # Uses the same Docker image as backend
+    container_name: email_manager_celery_worker
+    restart: unless-stopped
+    # Using -P gevent for I/O bound tasks like network requests
+    # Ensure gevent is installed in your backend's requirements.txt if you use -P gevent
+    # Add `gevent` to requirements.txt
+    command: celery -A app.core.celery_config worker -l info -P gevent
+    volumes:
+      - ./email_management_backend:/app # Mount code for development
+    environment:
+      - DATABASE_URL=${BACKEND_DATABASE_URL}
+      - SECRET_KEY=${BACKEND_SECRET_KEY}
+      - FERNET_KEY=${BACKEND_FERNET_KEY}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+    depends_on:
+      backend: # Worker might depend on backend if it uses shared code or settings loaded at backend startup
+        condition: service_started # Or a more specific healthcheck if backend provides one
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+    networks:
+      - email_app_network
+
+  celery_beat:
+    build: ./email_management_backend
+    container_name: email_manager_celery_beat
+    restart: unless-stopped
+    # Default scheduler is fine if beat_schedule is defined in celery_app.conf
+    command: celery -A app.core.celery_config beat -l info --scheduler celery.beat:PersistentScheduler
+    volumes:
+      - ./email_management_backend:/app
+      - celery_beat_schedule:/schedule # Persist schedule data
+    environment:
+      - DATABASE_URL=${BACKEND_DATABASE_URL} # May not be needed if not using DB for scheduler
+      - SECRET_KEY=${BACKEND_SECRET_KEY} # For consistency, though beat might not use it directly
+      - FERNET_KEY=${BACKEND_FERNET_KEY} # For consistency, if tasks need it indirectly
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND} # Beat doesn't use result backend but good for consistency
+    depends_on:
+      backend:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      db: # If using DB backed scheduler or tasks need DB
+        condition: service_healthy
+    networks:
+      - email_app_network

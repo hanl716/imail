@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+SQLAlchemy
+psycopg2-binary
+python-dotenv
+alembic
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart
+email-validator
+celery
+redis
+gevent # For Celery worker with -P gevent
