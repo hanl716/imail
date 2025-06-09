@@ -23,3 +23,8 @@ if not FERNET_KEY:
 # Celery Configuration
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "amqp://guest:guest@rabbitmq:5672//")
 CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/0")
+
+# Cerebras AI Configuration
+CEREBRAS_API_KEY = os.getenv("CEREBRAS_API_KEY")
+if not CEREBRAS_API_KEY:
+    print("WARNING: CEREBRAS_API_KEY not set. AI features requiring Cerebras will be disabled.")

@@ -1,15 +1,28 @@
 import datetime
+import asyncio # Added for running async AI categorization
+from app.core.celery_config import celery_app
+from app.services.email_connector import connect_imap, disconnect_imap, fetch_emails_in_mailbox
+import json # For parsing AI extraction response
+import logging # For better logging
 import datetime
+import asyncio # Added for running async AI categorization
 from app.core.celery_config import celery_app
 from app.services.email_connector import connect_imap, disconnect_imap, fetch_emails_in_mailbox
 from app.services.email_parser import parse_raw_email
-from app.services.categorization_service import categorize_email # Import categorization service
+from app.services.categorization_service import categorize_email_with_ai, rule_based_categorize_email
+from app.services.cerebras_ai_service import CerebrasAIService
 from app.utils.encryption import decrypt_data
 from app.database import SessionLocal
 from app.models.email_account import EmailAccount
-from app.models.email_content import EmailMessage, EmailAttachment, EmailThread # Import new models
+from app.core.constants import DEFAULT_CATEGORY, EmailCategory, JSON_SCHEMA_FOR_COMPLAINT_EXTRACTION # Import new constants
+from app.models.email_content import EmailMessage, EmailAttachment, EmailThread
+from app.models.complaint_data import ComplaintData # Import new ComplaintData model
 from app.core.config import FERNET_KEY
 from sqlalchemy.orm.exc import NoResultFound
+# Ensure logger is available if not configured globally for Celery
+logger = logging.getLogger(__name__)
+if not logger.handlers: # Basic config if no handlers present
+    logging.basicConfig(level=logging.INFO)
 from sqlalchemy import select
 
 @celery_app.task(name="app.tasks.debug_task")
@@ -17,7 +30,7 @@ def debug_task(message: str):
     print(f"Celery task 'debug_task' received: {message}")
     return f"Debug task processed: {message}"
 
-def get_or_create_thread(db: SessionLocal, parsed_data: dict, user_id: int, existing_message: EmailMessage = None) -> str:
+def get_or_create_thread(db: SessionLocal, parsed_data: dict, user_id: int, email_account_id: int, existing_message: EmailMessage = None) -> str:
     """
     Determines or creates a thread ID for a message.
     This is a simplified threading logic. A more robust one would involve deeper analysis
@@ -67,15 +80,23 @@ def get_or_create_thread(db: SessionLocal, parsed_data: dict, user_id: int, exis
     new_thread_id = parsed_data.get('message_id_header') or f"thread_subject_{parsed_data.get('subject', 'untitled')}_{datetime.datetime.utcnow().timestamp()}"
 
     # Check if this thread_id already exists (e.g. if it's based on message_id of first email in a new thread)
+    # Check if this thread_id already exists for this user AND account.
+    # This ensures threads are scoped per account if desired, though Message-IDs are usually globally unique.
+    # For simplicity, let's assume thread_id (based on Message-ID) is globally unique enough for user context.
+    # The main addition here is associating the thread with an account if it's newly created.
     thread = db.query(EmailThread).filter_by(id=new_thread_id, user_id=user_id).first()
     if not thread:
         thread = EmailThread(
             id=new_thread_id,
-            subject=parsed_data.get('subject', 'No Subject'),
-            user_id=user_id
+            subject=parsed_data.get('subject', 'No Subject'), # Or try to get subject from first message of thread if more complex
+            user_id=user_id,
+            email_account_id=email_account_id # Associate with the account
         )
         db.add(thread)
-        # db.commit() # Commit might be handled in batch later
+        # db.commit() can be handled later in the main transaction block
+    elif not thread.email_account_id : # If thread exists but somehow misses account_id (e.g. old data)
+        thread.email_account_id = email_account_id # Update it
+        # db.add(thread) # Mark for update
     return new_thread_id
 
 
@@ -139,7 +160,7 @@ def fetch_emails_for_account_task(self, account_id: int):
                     print(f"Message {parsed_data['message_id_header']} already exists and is complete. Skipping.")
                     continue
 
-                thread_id = get_or_create_thread(db, parsed_data, account.user_id, existing_message)
+                thread_id = get_or_create_thread(db, parsed_data, account.user_id, account.id, existing_message) # Pass account.id
 
                 # Fetch the thread to update its properties
                 # This commit for thread creation might be early if outer commit fails,
@@ -177,12 +198,42 @@ def fetch_emails_for_account_task(self, account_id: int):
                 db_message.is_read = False # Mark as unread by default
                 db_message.is_fetched_complete = True # Mark as fully processed
 
-                # Categorize the email
-                category = categorize_email(
-                    sender=parsed_data.get('sender_address',''),
-                    subject=parsed_data.get('subject',''),
-                    body_snippet=parsed_data.get('body_text','') # Use body_text for snippet
-                )
+                # AI Categorization
+                category = DEFAULT_CATEGORY # Default category
+                cerebras_service_instance = CerebrasAIService() # Instantiate here
+                if cerebras_service_instance.is_active:
+                    try:
+                        snippet_for_ai = parsed_data.get('body_text_snippet', '') # Use the new snippet field
+                        if not snippet_for_ai and parsed_data.get('body_text'): # Fallback if snippet missing
+                             snippet_for_ai = (parsed_data.get('body_text')[:500] + '...') if len(parsed_data.get('body_text','')) > 500 else parsed_data.get('body_text','')
+
+                        category = asyncio.run(categorize_email_with_ai(
+                            sender=parsed_data.get('sender_address',''),
+                            subject=parsed_data.get('subject',''),
+                            body_snippet=snippet_for_ai,
+                            cerebras_service=cerebras_service_instance
+                        ))
+                    except Exception as e_cat_ai:
+                        print(f"AI categorization call failed for message {parsed_data['message_id_header']}: {e_cat_ai}")
+                        # Fallback to rule-based if AI fails
+                        category = rule_based_categorize_email(
+                            sender=parsed_data.get('sender_address',''),
+                            subject=parsed_data.get('subject',''),
+                            body_snippet=snippet_for_ai
+                        )
+                    finally:
+                        # Ensure client is closed if created per task run
+                        asyncio.run(cerebras_service_instance.close_client())
+                else:
+                    print(f"Cerebras service not active for message {parsed_data['message_id_header']}, using rule-based categorization.")
+                    snippet_for_rules = parsed_data.get('body_text_snippet', '')
+                    if not snippet_for_rules and parsed_data.get('body_text'):
+                        snippet_for_rules = (parsed_data.get('body_text')[:500] + '...') if len(parsed_data.get('body_text','')) > 500 else parsed_data.get('body_text','')
+                    category = rule_based_categorize_email(
+                        sender=parsed_data.get('sender_address',''),
+                        subject=parsed_data.get('subject',''),
+                        body_snippet=snippet_for_rules
+                    )
                 db_message.category = category
 
                 if not existing_message:
@@ -213,19 +264,75 @@ def fetch_emails_for_account_task(self, account_id: int):
                         filename=attachment_data['filename'],
                         content_type=attachment_data['content_type'],
                         content_id=attachment_data['content_id'],
-                        size_bytes=attachment_data['size_bytes']
-                        # storage_path=... # If storing on disk/S3
+                        size_bytes=attachment_data['size_bytes'],
+                        content_bytes=attachment_data.get('payload') # Save payload if available (parser rules apply)
+                        # storage_path=... # If not storing in DB or for larger files
                     )
                     # Associate with the message. If message is new, this needs to happen after message is added or flushed.
                     # If using relationships, can append to db_message.attachments list.
                     db_message.attachments.append(db_attachment) # This relies on relationship configuration
-                    # If not using relationship append, then:
-                    # db.add(db_attachment)
-                    # db_attachment.email_message_id = db_message.id (after db_message has an id)
+
+                # After saving db_message and it has an ID, and if it's a complaint/suggestion:
+                if category == EmailCategory.COMPLAINTS_SUGGESTIONS.name:
+                    logger.info(f"Email {db_message.id} categorized as {category}. Attempting detail extraction.")
+                    if cerebras_service_instance.is_active: # Assuming service is still available from categorization step
+                        extraction_prompt_messages = [
+                            {"role": "system", "content": "You are an assistant that processes customer feedback. Analyze the following email. If it is a complaint or suggestion, extract its details into the specified JSON format using the provided schema. If not, return an empty JSON object or a JSON object with an 'issue_type' of 'NotApplicable'."},
+                            {"role": "user", "content": f"Email Content:\nSender: {parsed_data.get('sender_address','')}\nSubject: {parsed_data.get('subject','')}\nBody: {parsed_data.get('body_text_snippet','')}"} # Use full body if snippet too short body_text
+                        ]
+                        extraction_response_format = {
+                            "type": "json_schema",
+                            "json_schema": {
+                                "name": "complaint_extraction_schema",
+                                "strict": True,
+                                "schema": JSON_SCHEMA_FOR_COMPLAINT_EXTRACTION
+                            }
+                        }
+                        try:
+                            extraction_data_response = await cerebras_service_instance.get_chat_completion(
+                                messages=extraction_prompt_messages,
+                                model="llama3.1-8b", # Or specific model for extraction
+                                response_format=extraction_response_format,
+                                temperature=0.0 # Low temperature for factual extraction
+                            )
+                            if extraction_data_response and extraction_data_response.get("choices"):
+                                choice = extraction_data_response["choices"][0]
+                                if choice.get("message") and choice["message"].get("content"):
+                                    content_str = choice["message"]["content"]
+                                    try:
+                                        extracted_json = json.loads(content_str)
+                                        # Validate extracted_json and save to ComplaintData model
+                                        if extracted_json.get("summary") and extracted_json.get("issue_type") != "NotApplicable":
+                                            # Check if complaint data already exists for this message_id
+                                            existing_complaint = db.query(ComplaintData).filter_by(email_message_id=db_message.id).first()
+                                            if not existing_complaint:
+                                                new_complaint = ComplaintData(
+                                                    email_message_id=db_message.id,
+                                                    user_id=db_message.user_id,
+                                                    submitter_email=extracted_json.get("email_address", parsed_data.get('sender_address','')),
+                                                    submitter_name=extracted_json.get("customer_name"),
+                                                    issue_type=extracted_json.get("issue_type"),
+                                                    category_detail=extracted_json.get("category_detail"),
+                                                    product_service=extracted_json.get("product_service"),
+                                                    summary=extracted_json.get("summary"),
+                                                    sentiment=extracted_json.get("sentiment")
+                                                )
+                                                db.add(new_complaint)
+                                                logger.info(f"Extracted and saved complaint/suggestion for email {db_message.id}")
+                                            else:
+                                                logger.info(f"Complaint/suggestion data already exists for email {db_message.id}. Skipping creation.")
+                                        else:
+                                            logger.info(f"AI did not extract a valid summary or marked as NotApplicable for email {db_message.id}. Response: {content_str}")
+                                    except json.JSONDecodeError:
+                                        logger.error(f"Failed to parse JSON from AI for complaint extraction: {content_str}")
+                        except Exception as e_extract:
+                            logger.error(f"Error during AI complaint/suggestion extraction for email {db_message.id}: {e_extract}")
+                        # Note: cerebras_service_instance.close_client() is handled after all emails for an account are processed.
 
                 processed_count += 1
 
-            db.commit() # Commit all changes for this account's fetch operation
+            # Commit all changes for this account's fetch operation (including messages, threads, attachments, complaints)
+            db.commit()
             print(f"Successfully processed and stored {processed_count} emails for account {account.email_address} ({account_id}).")
 
         except Exception as e:

@@ -13,6 +13,7 @@ router = APIRouter()
 
 @router.get("/", response_model=List[schemas.email_content.EmailThreadOutput])
 def list_threads_for_user(
+    account_id: Optional[int] = None, # New optional query parameter
     skip: int = 0,
     limit: int = 20,
     db: Session = Depends(get_db),
@@ -20,9 +21,19 @@ def list_threads_for_user(
 ):
     """
     List email threads for the authenticated user.
+    Optionally filters by a specific email_account_id.
     """
+    # Further validation: ensure the account_id (if provided) belongs to the current_user
+    if account_id is not None:
+        acc = db.query(db_models.EmailAccount).filter(
+            db_models.EmailAccount.id == account_id,
+            db_models.EmailAccount.user_id == current_user.id
+        ).first()
+        if not acc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Email account with ID {account_id} not found or access denied.")
+
     threads = crud_email_content.get_threads_for_user(
-        db=db, user_id=current_user.id, skip=skip, limit=limit
+        db=db, user_id=current_user.id, account_id=account_id, skip=skip, limit=limit
     )
     # Pydantic will automatically map SQLAlchemy model fields to the schema.
     # Manual mapping/computation might be needed if schema fields differ significantly

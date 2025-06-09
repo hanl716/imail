@@ -1,8 +1,9 @@
 import { createRouter, createWebHistory } from 'vue-router';
-import IMView from '../views/IMView.vue'; // Changed from HomeView to IMView
+import IMView from '../views/IMView.vue';
 import LoginView from '../views/LoginView.vue';
 import RegisterView from '../views/RegisterView.vue';
 import EmailAccountsView from '../views/EmailAccountsView.vue';
+import ComplaintsView from '../views/ComplaintsView.vue'; // Import new view
 import { useAuthStore } from '@/stores/auth';
 
 const routes = [
@@ -32,6 +33,12 @@ const routes = [
     path: '/email-accounts',
     name: 'email-accounts',
     component: EmailAccountsView,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/complaints-suggestions',
+    name: 'complaints-suggestions',
+    component: ComplaintsView,
     meta: { requiresAuth: true }
   }
 ];

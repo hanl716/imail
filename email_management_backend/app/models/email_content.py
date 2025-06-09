@@ -9,6 +9,7 @@ class EmailThread(Base):
     id = Column(String, primary_key=True, index=True) # Could be a unique ID like the first message's Message-ID header or a generated UUID
     subject = Column(String, index=True, nullable=True) # Normalized subject of the thread
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    email_account_id = Column(Integer, ForeignKey("email_accounts.id", ondelete="CASCADE"), nullable=False, index=True) # Added
 
     last_message_at = Column(DateTime, index=True, nullable=True)
     snippet = Column(String(255), nullable=True) # Store a short snippet of the last/first message
@@ -20,6 +21,7 @@ class EmailThread(Base):
     # Relationship to messages in this thread
     messages = relationship("EmailMessage", back_populates="thread", cascade="all, delete-orphan")
     user = relationship("User")
+    account = relationship("EmailAccount") # Added relationship
 
 
 class EmailMessage(Base):
@@ -78,9 +80,9 @@ class EmailAttachment(Base):
 
     # For storing attachment content:
     # Option 1: Store in DB (only for very small files, generally not recommended for large ones)
-    # content_bytes = Column(LargeBinary, nullable=True)
+    content_bytes = Column(LargeBinary, nullable=True) # Store small attachments directly
     # Option 2: Store path to file on disk/S3
-    storage_path = Column(String, nullable=True) # e.g., "attachments/user_id/message_id/filename"
+    storage_path = Column(String, nullable=True) # e.g., "user_id/message_id/filename" if storing on shared disk/S3
 
     # Relationship
     email_message = relationship("EmailMessage", back_populates="attachments")

@@ -9,11 +9,14 @@
       </span>
       <span v-if="authStore.isAuthenticated">
         | <router-link to="/email-accounts">Manage Accounts</router-link>
+        | <router-link to="/complaints-suggestions">Complaints/Suggestions</router-link> <!-- New Link -->
         <span v-if="authStore.user"> | Welcome, {{ authStore.user.email }}</span>
         | <button @click="handleLogout">Logout</button>
       </span>
     </nav>
-    <router-view/>
+    <div class="router-view-wrapper"> <!-- Ensure this wrapper is present -->
+      <router-view/>
+    </div>
   </div>
 </template>
 

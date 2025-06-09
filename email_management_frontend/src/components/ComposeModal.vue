@@ -92,9 +92,17 @@ function parseRecipients(str) {
 watch(() => props.isVisible, (newVal) => {
   if (newVal) {
     composeStore.clearStatus(); // Clear previous send status
-    // Reset form or populate with initialData
+
+    // Default from_account_id to active account if available, else first account, else null
+    let defaultFromId = null;
+    if (emailAccountsStore.activeAccountId && availableAccounts.value.some(acc => acc.id === emailAccountsStore.activeAccountId)) {
+        defaultFromId = emailAccountsStore.activeAccountId;
+    } else if (availableAccounts.value.length > 0) {
+        defaultFromId = availableAccounts.value[0].id;
+    }
+
     formData.value = {
-      from_account_id: availableAccounts.value.length > 0 ? availableAccounts.value[0].id : null, // Default to first account
+      from_account_id: defaultFromId,
       to_recipients: [],
       cc_recipients: [],
       bcc_recipients: [],
@@ -107,11 +115,20 @@ watch(() => props.isVisible, (newVal) => {
 
     if (props.initialData) {
       toRecipientsStr.value = (props.initialData.to_recipients || []).join(', ');
-      // ccRecipientsStr.value = (props.initialData.cc_recipients || []).join(', '); // If needed
       formData.value.subject = props.initialData.subject || '';
-      formData.value.body_text = props.initialData.quoted_body || '';
-      // Set from_account_id if relevant, or let user choose
+      // Prioritize body_text from initialData if provided (e.g., from suggestion)
+      // Fallback to quoted_body for replies
+      formData.value.body_text = props.initialData.body_text || props.initialData.quoted_body || '';
+      // Set from_account_id if explicitly provided in initialData (e.g. "Send from this specific account")
+      // This overrides the active/default account selection.
+      if (props.initialData.from_account_id) {
+          formData.value.from_account_id = props.initialData.from_account_id;
+      }
     }
+  } else {
+    // When modal is closed, clear selections to avoid stale data on reopen
+    // This is already handled by the reset in the `if (newVal)` block,
+    // but explicit reset of specific fields if needed can go here.
   }
 });
 

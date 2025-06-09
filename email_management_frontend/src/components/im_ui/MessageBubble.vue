@@ -13,8 +13,9 @@
         <strong>Attachments:</strong>
         <ul>
           <li v-for="att in message.attachments" :key="att.id">
-            {{ att.filename || 'untitled' }} ({{ (att.size_bytes / 1024).toFixed(1) }} KB)
-            <!-- Add download link/button later -->
+            <a :href="getAttachmentDownloadUrl(att.id)" target="_blank" rel="noopener noreferrer" class="attachment-link">
+              📎 {{ att.filename || 'untitled' }} ({{ formatBytes(att.size_bytes) }})
+            </a>
           </li>
         </ul>
       </div>
@@ -38,6 +39,22 @@ const props = defineProps({
 
 const authStore = useAuthStore();
 // const emailAccountsStore = useEmailAccountsStore(); // For more robust check
+
+const getAttachmentDownloadUrl = (attachmentId) => {
+  // Base URL for API. If your Nginx proxy or dev server setup changes, adjust this.
+  // Assumes API is served from the same domain or correctly proxied under /api.
+  // The backend route is /api/v1/attachments/{attachment_id}/download
+  return `/api/v1/attachments/${attachmentId}/download`;
+};
+
+const formatBytes = (bytes, decimals = 1) => {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+};
 
 const isOwnMessage = computed(() => {
   if (!props.message || !props.message.sender_address) {
@@ -134,5 +151,12 @@ const isOwnMessage = computed(() => {
 .attachments-list li {
   font-size: 0.8em;
   padding: 2px 0;
+}
+.attachment-link {
+  color: #007bff;
+  text-decoration: none;
+}
+.attachment-link:hover {
+  text-decoration: underline;
 }
 </style>

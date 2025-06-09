@@ -11,7 +11,7 @@ class ParsedAttachment(TypedDict):
     content_type: str
     content_id: Optional[str]
     size_bytes: int
-    payload: bytes # Raw payload
+    payload: Optional[bytes] # Payload might be None if too large for DB storage
 
 class ParsedEmailData(TypedDict):
     message_id_header: Optional[str]
@@ -24,6 +24,7 @@ class ParsedEmailData(TypedDict):
     sent_at: Optional[datetime.datetime]
     body_text: Optional[str]
     body_html: Optional[str]
+    body_text_snippet: Optional[str] # Added for categorization
     headers: Dict[str, Any] # Store all headers
     in_reply_to_header: Optional[str]
     references_header: Optional[str]
@@ -103,13 +104,20 @@ def parse_raw_email(raw_email_bytes: bytes) -> Optional[ParsedEmailData]:
             if filename: # Decode filename if necessary
                 filename = _decode_header_value(filename)
 
-            payload_bytes = part.get_payload(decode=True)
+            payload_bytes_full = part.get_payload(decode=True)
+            payload_to_store = None
+            MAX_ATTACHMENT_SIZE_DB = 1 * 1024 * 1024 # 1MB limit for DB storage
+            if len(payload_bytes_full) <= MAX_ATTACHMENT_SIZE_DB:
+                payload_to_store = payload_bytes_full
+            # Else: payload_to_store remains None, indicating it's too large for DB.
+            # A storage_path would be set by Celery task if saving to disk/S3.
+
             attachments.append({
                 "filename": filename,
                 "content_type": content_type,
                 "content_id": part.get("Content-ID"),
-                "size_bytes": len(payload_bytes),
-                "payload": payload_bytes # Store raw bytes for now
+                "size_bytes": len(payload_bytes_full),
+                "payload": payload_to_store
             })
         elif content_type == "text/plain" and body_text is None and content_disposition != "attachment":
             try:
@@ -129,13 +137,18 @@ def parse_raw_email(raw_email_bytes: bytes) -> Optional[ParsedEmailData]:
             filename = part.get_filename()
             if filename:
                 filename = _decode_header_value(filename)
-            payload_bytes = part.get_payload(decode=True)
+            payload_bytes_full = part.get_payload(decode=True)
+            payload_to_store = None
+            MAX_ATTACHMENT_SIZE_DB = 1 * 1024 * 1024 # 1MB limit for DB storage (consistent)
+            if len(payload_bytes_full) <= MAX_ATTACHMENT_SIZE_DB:
+                payload_to_store = payload_bytes_full
+
             attachments.append({
-                "filename": filename, # Or a placeholder name if none
+                "filename": filename,
                 "content_type": content_type,
-                "content_id": part.get("Content-ID"), # Crucial for inline images
-                "size_bytes": len(payload_bytes),
-                "payload": payload_bytes
+                "content_id": part.get("Content-ID"),
+                "size_bytes": len(payload_bytes_full),
+                "payload": payload_to_store
             })
 
     # If only HTML is found, try to convert a snippet to text (optional, basic)
@@ -149,6 +162,9 @@ def parse_raw_email(raw_email_bytes: bytes) -> Optional[ParsedEmailData]:
             pass # Ignore if conversion fails
 
 
+
+    body_text_snippet = (body_text[:500] + '...') if body_text and len(body_text) > 500 else body_text
+
     return {
         "message_id_header": message_id_header,
         "subject": subject,
@@ -160,6 +176,7 @@ def parse_raw_email(raw_email_bytes: bytes) -> Optional[ParsedEmailData]:
         "sent_at": sent_at,
         "body_text": body_text,
         "body_html": body_html,
+        "body_text_snippet": body_text_snippet, # Add snippet to returned dict
         "headers": dict(all_headers), # Convert email.message.Message items view to dict
         "in_reply_to_header": in_reply_to_header,
         "references_header": references_header,

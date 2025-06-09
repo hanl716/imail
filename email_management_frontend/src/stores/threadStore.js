@@ -13,16 +13,34 @@ export const useThreadStore = defineStore('threads', () => {
 
     const authStore = useAuthStore();
 
-    async function fetchThreads() {
+    async function fetchThreads(accountId = null) { // Accept accountId
         if (!authStore.isAuthenticated) {
             error.value = 'User not authenticated to fetch threads.';
             threads.value = [];
+            clearActiveThread(); // Also clear active messages
             return;
         }
+
+        // If accountId is null, and we require an account to be selected,
+        // then don't fetch. Or, fetch for "all accounts" if backend supports it.
+        // For this implementation, we'll require an accountId to fetch threads.
+        if (accountId === null) {
+            threads.value = []; // Clear threads if no account is active
+            clearActiveThread();
+            // error.value = "No active account selected to fetch threads for."; // Optional message
+            loadingThreads.value = false; // Not technically loading if we don't fetch
+            return;
+        }
+
         loadingThreads.value = true;
         error.value = null;
+        // Clear previous thread data when fetching for a new account
+        threads.value = [];
+        clearActiveThread();
+
         try {
-            const response = await fetch('/api/v1/threads/', {
+            const apiUrl = accountId ? `/api/v1/threads/?account_id=${accountId}` : '/api/v1/threads/';
+            const response = await fetch(apiUrl, {
                 method: 'GET',
                 headers: { ...authStore.authHeader }
             });
