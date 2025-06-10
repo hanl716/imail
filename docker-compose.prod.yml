@@ -57,9 +57,10 @@ services:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB}
-    # For production, consider not exposing DB port directly to host unless necessary for specific admin/backup tasks
+    # For production, DB port should ideally not be exposed to the host.
+    # Access should be limited to other services within the Docker network.
     # ports:
-    #   - "5432:5432"
+    #  - "5432:5432" # Commented out for production hardening
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
@@ -78,11 +79,11 @@ services:
       - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER:-guest} # Default to guest if not in .env
       - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS:-guest} # Default to guest if not in .env
       - RABBITMQ_DEFAULT_VHOST=/
-    # For production, consider not exposing RabbitMQ ports directly to host unless management UI is needed
-    # and secured, or specific external producers/consumers need access.
+    # For production, RabbitMQ ports should ideally not be exposed to the host.
+    # Management UI could be accessed via port forwarding or a secure VPN if needed.
     # ports:
-    #   - "5672:5672"
-    #   - "15672:15672"
+    #   - "5672:5672"  # AMQP port - Commented out
+    #   - "15672:15672" # Management UI port - Commented out
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 10s
@@ -97,9 +98,9 @@ services:
     restart: unless-stopped
     volumes:
       - redis_data_prod:/data # Use a distinct prod volume
-    # For production, consider not exposing Redis port directly to host
+    # For production, Redis port should ideally not be exposed to the host.
     # ports:
-    #   - "6379:6379"
+    #   - "6379:6379" # Commented out for production hardening
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s

@@ -2,9 +2,9 @@
   <div class="message-bubble-wrapper">
     <div class="message-bubble" :class="{ 'own-message': isOwnMessage }">
       <div class="message-content">
-        <!-- Using body_text for now for safety. To use body_html, ensure sanitization. -->
-        <p>{{ message.body_text || 'No text content' }}</p>
-        <!-- <div v-if="message.body_html" v-html="sanitizedHtml"></div> -->
+        <div v-if="message.body_html" v-html="sanitizeHtml(message.body_html)" class="html-content"></div>
+        <pre v-else-if="message.body_text" class="text-content">{{ message.body_text }}</pre>
+        <p v-else class="text-content-empty"><em>No message content.</em></p>
       </div>
       <div class="message-meta" v-if="message.category">
         <span class="category-badge">{{ message.category }}</span>
@@ -30,15 +30,34 @@
 <script setup>
 import { computed } from 'vue';
 import { useAuthStore } from '@/stores/auth';
-// import { useEmailAccountsStore } from '@/stores/emailAccounts'; // For more robust "isOwnMessage" check
+import DOMPurify from 'dompurify'; // Import DOMPurify
 
 const props = defineProps({
-  // Expecting message to be of type EmailMessageOutput
   message: Object
 });
 
 const authStore = useAuthStore();
-// const emailAccountsStore = useEmailAccountsStore(); // For more robust check
+
+function sanitizeHtml(htmlString) {
+  // Add a hook to make all links open in a new tab
+  DOMPurify.addHook('afterSanitizeAttributes', function (node) {
+    if ('target' in node) {
+      node.setAttribute('target', '_blank');
+      node.setAttribute('rel', 'noopener noreferrer');
+    }
+    // Example: Force https for image sources if desired
+    // if (node.tagName === 'IMG' && node.hasAttribute('src')) {
+    //   let src = node.getAttribute('src');
+    //   if (src.startsWith('http:')) {
+    //     node.setAttribute('src', src.replace('http:', 'https:'));
+    //   }
+    // }
+  });
+  // Configure DOMPurify: Allow common HTML tags, forbid scripts, etc.
+  // USE_PROFILES: { html: true } is a good default for general HTML content.
+  // You can customize further if needed, e.g. FORBID_TAGS, ADD_ATTR.
+  return DOMPurify.sanitize(htmlString, { USE_PROFILES: { html: true } });
+}
 
 const getAttachmentDownloadUrl = (attachmentId) => {
   // Base URL for API. If your Nginx proxy or dev server setup changes, adjust this.
@@ -74,15 +93,13 @@ const isOwnMessage = computed(() => {
 // If using v-html for body_html, a sanitizer function would be needed here.
 // For example, using DOMPurify:
 // import DOMPurify from 'dompurify';
-// const sanitizedHtml = computed(() => {
-//   return props.message.body_html ? DOMPurify.sanitize(props.message.body_html) : '';
-// });
+// const sanitizedHtml = computed(() => { ... }) // Not needed if sanitizeHtml is a method call in template
 
 </script>
 
 <style scoped>
 .message-bubble-wrapper {
-  overflow: auto; /* To contain floats */
+  overflow: auto;
   margin-bottom: 10px;
 }
 .message-bubble {
@@ -106,8 +123,29 @@ const isOwnMessage = computed(() => {
 }
 .message-content p {
   margin: 0 0 8px 0; /* Space between text and timestamp/attachments */
-  white-space: pre-wrap; /* Respect newlines in plain text */
+  white-space: pre-wrap;
 }
+.html-content {
+  /* Basic styling for HTML content to blend in */
+  line-height: 1.5;
+}
+/* Deeper styling for v-html content */
+.html-content ::v-deep(p) { margin: 0 0 0.5em 0; }
+.html-content ::v-deep(a) { color: var(--link-color, #007bff); text-decoration: underline; }
+.html-content ::v-deep(img) { max-width: 100%; height: auto; margin: 0.5em 0; border-radius: 4px; }
+.html-content ::v-deep(ul), .html-content ::v-deep(ol) { padding-left: 20px; margin-bottom: 0.5em; }
+.html-content ::v-deep(blockquote) {
+  margin: 0.5em 0 0.5em 10px;
+  padding: 5px 10px;
+  border-left: 3px solid #ccc;
+  background-color: #f8f9fa; /* Slightly different background for blockquotes */
+  color: #555;
+}
+.text-content-empty {
+    color: #888;
+    font-style: italic;
+}
+
 .message-timestamp {
   font-size: 0.75em;
   color: #666;
