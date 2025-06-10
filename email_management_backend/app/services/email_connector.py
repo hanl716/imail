@@ -237,3 +237,34 @@ def send_email(
         logger.error(f"Failed to send email from {sender_email} to {recipient_email}: {e}", exc_info=True)
         raise EmailSendError(f"Failed to send email from {sender_email} to {recipient_email}: {e}")
     return False
+
+
+def append_to_mailbox(imap_conn: imaplib.IMAP4, mailbox: str, email_message_obj: EmailMessage) -> bool:
+    """
+    Appends a given email.message.EmailMessage object to the specified mailbox.
+    """
+    try:
+        message_bytes = email_message_obj.as_bytes()
+        # Standard flags for a sent message usually include \Seen.
+        # date_time can be None for imaplib to set current server time, or provide specific datetime.
+        # Note on mailbox names: some servers are picky (e.g. Gmail uses "[Gmail]/Sent Mail").
+        # For MVP, we'll use a common name like "Sent". This should ideally be configurable or auto-detected.
+
+        # Ensure mailbox exists or create it (optional, some servers auto-create on APPEND)
+        # status_create, _ = imap_conn.create(mailbox)
+        # if status_create != 'OK' and 'exists' not in str(_).lower(): # crude check for "already exists"
+        #     logger.warning(f"Could not create or ensure mailbox '{mailbox}' exists. Append may fail.")
+
+        status, response = imap_conn.append(mailbox, r'(\Seen)', None, message_bytes)
+
+        if status == 'OK':
+            logger.info(f"Successfully appended email to mailbox '{mailbox}'")
+            return True
+        else:
+            # Decode response for logging if it's bytes
+            response_str = response[0].decode() if response and isinstance(response[0], bytes) else str(response)
+            logger.error(f"Failed to append email to mailbox '{mailbox}': {response_str}")
+            return False
+    except Exception as e:
+        logger.error(f"Error appending email to mailbox '{mailbox}': {e}", exc_info=True)
+        return False

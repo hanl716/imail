@@ -18,3 +18,5 @@ pytest-asyncio
 httpx # Often a dependency of SDKs, but good to have for general testing
 # respx # unittest.mock.patch is used in the example, so respx might not be immediately needed
 # pytest-httpx # Alternative to respx
+flake8
+black

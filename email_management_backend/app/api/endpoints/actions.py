@@ -1,16 +1,20 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request # Added Request
+import email # For EmailMessage object construction
+import email.utils # For formatdate and make_msgid
+import logging # For logging
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 
 from app import models
 from app import schemas
-from app.core.limiter import limiter # Import limiter
+from app.core.limiter import limiter
 from app.database import get_db
 from app.security import get_current_user
 from app.models.email_account import EmailAccount
-from app.services.email_connector import connect_smtp, disconnect_smtp, send_email, EmailConnectionError, EmailSendError
+from app.services import email_connector # Import as module to access all its functions
 from app.utils.encryption import decrypt_data
-from app.core.config import FERNET_KEY # To check if encryption is available
+from app.core.config import FERNET_KEY
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 @router.post("/send-email", status_code=status.HTTP_202_ACCEPTED)
@@ -106,20 +110,71 @@ async def send_composed_email(
             # TODO: Add CC/BCC handling in send_email and EmailMessage object if needed
         )
 
-        # Optional: Save to "Sent" folder via IMAP (skipped for this subtask's core)
 
-        return {"message": "Email sent successfully."} # Or "Email queued for sending."
+        # --- Save to Sent Folder (Best Effort) ---
+        logger.info(f"Attempting to save sent email to 'Sent' folder for account {account.id}")
+        imap_conn_sent = None
+        try:
+            # Construct the EmailMessage object for saving
+            msg_to_save = email.message.EmailMessage()
+            # Ensure 'From' header is correctly set to the sending user's email address on the account
+            msg_to_save["From"] = account.email_address
+            msg_to_save["To"] = ", ".join(composed_email.to_recipients)
+            if composed_email.cc_recipients:
+                msg_to_save["Cc"] = ", ".join(composed_email.cc_recipients)
+            # BCC recipients are NOT included in the headers of the stored sent message
+            msg_to_save["Subject"] = composed_email.subject
+            msg_to_save.set_content(composed_email.body_text)
+            if composed_email.body_html:
+                msg_to_save.add_alternative(composed_email.body_html, subtype='html')
 
-    except EmailConnectionError as e:
-        # Log e
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"SMTP Connection Error: {e}")
-    except EmailSendError as e:
-        # Log e
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Email Sending Error: {e}")
+            msg_to_save['Date'] = email.utils.formatdate(localtime=True) # Current time for sent date
+            msg_to_save['Message-ID'] = email.utils.make_msgid() # Generate a unique Message-ID
+
+            # Assuming password is used for IMAP, same as SMTP for this account
+            # If OAuth tokens were used, this logic would differ (e.g., using access_token for IMAP)
+            imap_password_to_use = password # Re-use decrypted SMTP password
+
+            if account.imap_server and account.imap_port and (account.email_user or account.email_address) and imap_password_to_use:
+                # Infer IMAP SSL from common port or use a stored account preference
+                imap_use_ssl = account.imap_port == 993 # Common IMAP SSL port
+
+                imap_conn_sent = email_connector.connect_imap(
+                    host=account.imap_server,
+                    port=account.imap_port,
+                    email_user=(account.email_user or account.email_address),
+                    password=imap_password_to_use,
+                    use_ssl=imap_use_ssl
+                )
+                if imap_conn_sent:
+                    # Common "Sent" folder names: "Sent", "[Gmail]/Sent Mail", "Sent Items"
+                    # This should ideally be configurable per account or auto-detected.
+                    sent_mailbox_name = "Sent" # MVP: Use a common default
+
+                    append_success = email_connector.append_to_mailbox(imap_conn_sent, sent_mailbox_name, msg_to_save)
+                    if not append_success:
+                        logger.warning(f"Failed to append message to '{sent_mailbox_name}' for account {account.email_address}, but email was sent via SMTP.")
+            else:
+                logger.warning(f"Missing IMAP details or credentials for account {account.id}, cannot save to Sent folder.")
+
+        except Exception as e_append:
+            logger.error(f"Failed to save email to Sent folder for account {account.id}: {e_append}", exc_info=True)
+        finally:
+            if imap_conn_sent:
+                email_connector.disconnect_imap(imap_conn_sent)
+        # --- End Save to Sent Folder ---
+
+        return {"message": "Email sent successfully. Attempted to save to Sent folder."}
+
+    except email_connector.EmailConnectionError as e:
+        logger.error(f"SMTP Connection Error for account {account.email_address}: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"SMTP Connection Error: Could not connect to email server.")
+    except email_connector.EmailSendError as e:
+        logger.error(f"Email Sending Error for account {account.email_address}: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Email Sending Error: Failed to send email.")
     except Exception as e:
-        # Log e
-        print(f"Unexpected error during email sending: {e}") # Log this for debugging
+        logger.error(f"Unexpected error during email sending process for account {account.email_address}: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An unexpected error occurred while sending the email.")
     finally:
         if smtp_conn:
-            disconnect_smtp(smtp_conn)
+            email_connector.disconnect_smtp(smtp_conn)

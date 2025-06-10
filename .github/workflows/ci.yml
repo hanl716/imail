@@ -10,9 +10,23 @@ jobs:
   lint-and-test:
     name: Lint & Test
     runs-on: ubuntu-latest
+    services: # Add PostgreSQL service for integration tests
+      postgres_test_db:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: email_manager_test_db
+        ports:
+          - 5434:5432 # Map service port 5432 to host port 5434
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     strategy:
       matrix:
-        python-version: ['3.10'] # Consistent with Dockerfile
+        python-version: ['3.10']
         node-version: ['18.x']   # Consistent with Dockerfile
 
     steps:
@@ -41,16 +55,17 @@ jobs:
         # For CI, good to install test/lint tools explicitly if not in main requirements.txt
         # pip install pytest pytest-asyncio flake8 black
 
-    - name: Lint Backend (Placeholder)
+    - name: Lint Backend
       working-directory: ./email_management_backend
       run: |
-        echo "TODO: Add backend linting. Example: pip install flake8 && flake8 ."
-        # flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics || true
-        # black --check . || true # Allow to pass for now
+        # flake8 and black are now in requirements.txt
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        black --check .
 
     - name: Test Backend
       working-directory: ./email_management_backend
-      # Ensure pytest is installed (either in requirements.txt or via pip install above)
+      env: # Set environment variables for the test step
+        TEST_DATABASE_URL: postgresql://test_user:test_password@localhost:5434/email_manager_test_db
       run: |
         pytest tests/
 
@@ -59,20 +74,18 @@ jobs:
       # Using npm ci for cleaner installs based on package-lock.json
       run: npm ci
 
-    - name: Lint Frontend (Placeholder)
+    - name: Lint Frontend
       working-directory: ./email_management_frontend
       run: |
-        echo "TODO: Add frontend linting. Example: npm run lint"
-        # Add lint script to package.json e.g., "lint": "eslint ."
-        # npm run lint || true
+        # Assuming 'npm run lint' is configured in package.json (e.g., "lint": "eslint . --ext .js,.vue src")
+        npm run lint
 
-    - name: Test Frontend (Placeholder)
+    - name: Test Frontend
       working-directory: ./email_management_frontend
       run: |
-        echo "TODO: Add frontend test command. Example: npm run test:unit -- --ci --watchAll=false"
-        # Ensure test:unit script in package.json correctly runs Jest/Vitest
-        # Example: "test:unit": "vue-cli-service test:unit --watchAll=false" for non-interactive CI
-        # npm run test:unit -- --ci --coverage # If coverage is desired
+        # Assuming 'npm run test:unit' is configured for non-interactive CI
+        # e.g., "test:unit": "vue-cli-service test:unit --watchAll=false --ci"
+        npm run test:unit -- --ci --watchAll=false --coverage
 
   build-docker-images:
     name: Build Docker Images
@@ -103,9 +116,10 @@ jobs:
         context: ./email_management_backend
         file: ./email_management_backend/Dockerfile
         push: true # Set to true to push to registry; false for just build
-        tags: yourdockerusername/email-backend:latest # Replace with your actual Docker Hub username/repo
-        # For dynamic tagging (e.g., with Git SHA):
-        # tags: yourdockerusername/email-backend:${{ github.sha }}, yourdockerusername/email-backend:latest
+        tags: |
+          yourdockerhubusername/email-backend:${{ github.sha }}
+          yourdockerhubusername/email-backend:latest
+        # Ensure 'yourdockerhubusername' is replaced
 
     - name: Build and Push Frontend Image (Example)
       uses: docker/build-push-action@v5
@@ -113,8 +127,10 @@ jobs:
         context: ./email_management_frontend
         file: ./email_management_frontend/Dockerfile
         push: true
-        tags: yourdockerusername/email-frontend:latest
-        # tags: yourdockerusername/email-frontend:${{ github.sha }}, yourdockerusername/email-frontend:latest
+        tags: |
+          yourdockerhubusername/email-frontend:${{ github.sha }}
+          yourdockerhubusername/email-frontend:latest
+        # Ensure 'yourdockerhubusername' is replaced
 
     # Note: Celery worker and beat use the same backend Docker image, so no separate build needed for them.
 
