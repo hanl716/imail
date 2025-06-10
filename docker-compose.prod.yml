@@ -1,0 +1,166 @@
+version: '3.8'
+
+# Production Docker Compose File
+# This file assumes:
+# 1. Docker images are pre-built and available in a registry.
+# 2. A .env file is present in the same directory on the server, containing
+#    all necessary production environment variables.
+
+services:
+  backend:
+    image: yourdockerhubusername/email-backend:${BACKEND_IMAGE_TAG:-latest} # Replace with your registry/image
+    container_name: email_manager_backend_prod
+    restart: unless-stopped
+    # No build context or code volumes for production image
+    ports:
+      # Expose backend port only if directly accessed or through a load balancer.
+      # If frontend Nginx proxies all backend requests, this might not need to be exposed on the host.
+      # For direct access or separate API domain:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=${BACKEND_DATABASE_URL}
+      - SECRET_KEY=${BACKEND_SECRET_KEY}
+      - ALGORITHM=${BACKEND_ALGORITHM}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${BACKEND_ACCESS_TOKEN_EXPIRE_MINUTES}
+      - FERNET_KEY=${BACKEND_FERNET_KEY}
+      - CEREBRAS_API_KEY=${BACKEND_CEREBRAS_API_KEY}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+      - REDIS_URL=${REDIS_URL}
+      - PYTHON_LOG_LEVEL=${PYTHON_LOG_LEVEL:-INFO} # Example: Default to INFO for prod
+    depends_on:
+      db: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    networks:
+      - email_app_network
+
+  frontend:
+    image: yourdockerhubusername/email-frontend:${FRONTEND_IMAGE_TAG:-latest} # Replace with your registry/image
+    container_name: email_manager_frontend_prod
+    restart: unless-stopped
+    ports:
+      - "80:80"   # Standard HTTP port for Nginx serving frontend
+      # - "443:443" # If Nginx inside container handles SSL (requires certs in image/volume)
+    depends_on:
+      - backend # Frontend Nginx proxies to backend service
+    networks:
+      - email_app_network
+
+  db:
+    image: postgres:15-alpine
+    container_name: email_manager_db_prod
+    restart: unless-stopped
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data # Use a distinct prod volume
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    # For production, consider not exposing DB port directly to host unless necessary for specific admin/backup tasks
+    # ports:
+    #   - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - email_app_network
+
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: email_manager_rabbitmq_prod
+    restart: unless-stopped
+    volumes:
+      - rabbitmq_data_prod:/var/lib/rabbitmq/ # Use a distinct prod volume
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER:-guest} # Default to guest if not in .env
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS:-guest} # Default to guest if not in .env
+      - RABBITMQ_DEFAULT_VHOST=/
+    # For production, consider not exposing RabbitMQ ports directly to host unless management UI is needed
+    # and secured, or specific external producers/consumers need access.
+    # ports:
+    #   - "5672:5672"
+    #   - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - email_app_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: email_manager_redis_prod
+    restart: unless-stopped
+    volumes:
+      - redis_data_prod:/data # Use a distinct prod volume
+    # For production, consider not exposing Redis port directly to host
+    # ports:
+    #   - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - email_app_network
+
+  celery_worker:
+    image: yourdockerhubusername/email-backend:${BACKEND_IMAGE_TAG:-latest} # Uses same backend image
+    container_name: email_manager_celery_worker_prod
+    command: celery -A app.core.celery_config worker -l INFO -P gevent # Prod log level
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=${BACKEND_DATABASE_URL}
+      - SECRET_KEY=${BACKEND_SECRET_KEY}
+      - FERNET_KEY=${BACKEND_FERNET_KEY}
+      - CEREBRAS_API_KEY=${BACKEND_CEREBRAS_API_KEY}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+      - REDIS_URL=${REDIS_URL}
+      - PYTHON_LOG_LEVEL=${PYTHON_LOG_LEVEL:-INFO}
+    depends_on:
+      backend: { condition: service_started } # Or service_healthy if backend has healthcheck
+      rabbitmq: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      db: { condition: service_healthy }
+    networks:
+      - email_app_network
+
+  celery_beat:
+    image: yourdockerhubusername/email-backend:${BACKEND_IMAGE_TAG:-latest} # Uses same backend image
+    container_name: email_manager_celery_beat_prod
+    command: celery -A app.core.celery_config beat -l INFO --scheduler celery.beat:PersistentScheduler
+    restart: unless-stopped
+    volumes:
+      - celery_beat_schedule_prod:/app/celerybeat-schedule # Use a distinct prod volume
+    environment:
+      - DATABASE_URL=${BACKEND_DATABASE_URL} # If scheduler needs DB
+      - SECRET_KEY=${BACKEND_SECRET_KEY}
+      - FERNET_KEY=${BACKEND_FERNET_KEY}
+      - CEREBRAS_API_KEY=${BACKEND_CEREBRAS_API_KEY}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+      - REDIS_URL=${REDIS_URL}
+      - PYTHON_LOG_LEVEL=${PYTHON_LOG_LEVEL:-INFO}
+    depends_on:
+      backend: { condition: service_started }
+      rabbitmq: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      db: { condition: service_healthy }
+    networks:
+      - email_app_network
+
+volumes:
+  postgres_data_prod:
+  rabbitmq_data_prod:
+  redis_data_prod:
+  celery_beat_schedule_prod:
+
+networks:
+  email_app_network:
+    driver: bridge
+    # name: email_app_prod_network # Consider namespacing production network

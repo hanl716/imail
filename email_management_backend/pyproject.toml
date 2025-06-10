@@ -1,0 +1,32 @@
+[tool.black]
+line-length = 88
+target-version = ['py310'] # Corresponds to Python 3.10
+include = '\.pyi?$'
+# Exclude can be more specific if needed, but default often covers venv, .git etc.
+# Example explicit exclude:
+exclude = '''
+/(
+    \.git
+  | \.hg
+  | \.mypy_cache
+  # | \.tox # Uncomment if using tox
+  | \.venv
+  | venv
+  | _build
+  | buck-out
+  | build
+  | dist
+  | alembic/versions/ # Auto-generated migration scripts might have long lines or different formatting
+)/
+'''
+
+[tool.pytest.ini_options] # Alternative way to specify pytest options if not using pytest.ini
+# asyncio_mode = "auto"
+# python_files = "test_*.py"
+# python_classes = "Test*"
+# python_functions = "test_*"
+# env = [
+#     # "CEREBRAS_API_KEY=test_key_for_pytest_pyproject"
+# ]
+# For this project, pytest.ini is already used, so this section is illustrative.
+# If pytest.ini were removed, these options could be placed here.

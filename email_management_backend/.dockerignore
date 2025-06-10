@@ -1,0 +1,62 @@
+# Git files
+.git
+.gitignore
+
+# Docker files
+.dockerignore
+Dockerfile
+
+# Python virtual environment
+venv
+.venv
+env
+.env # Local environment files, not to be confused with .env.example
+
+# Python cache and compiled files
+__pycache__
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Pytest cache
+.pytest_cache
+.coverage
+htmlcov/
+
+# Mypy cache
+.mypy_cache
+
+# Instance-specific files
+*.local
+
+# IDE settings
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# alembic.ini is versioned, but local overrides should be ignored
+alembic.ini.local
+
+# Local test database files (if using SQLite for some local tests)
+# *.db
+# test.db
+# local_test.db

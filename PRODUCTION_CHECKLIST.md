@@ -109,13 +109,25 @@ Ensure all the following environment variables are set with **strong, unique, an
     *   Use Flower (can be added as another service in `docker-compose.yml` for production monitoring) or monitor RabbitMQ/Redis queue lengths and task processing rates directly. This is crucial for ensuring background tasks are running smoothly.
     *   Set up alerts for long queue lengths or high task failure rates.
 
-## 5. Deployment Strategy
+## 5. Deployment Strategy & Process
+
+### 5.1. Deployment Approach
 *   Plan your deployment strategy (e.g., blue/green, canary, rolling updates) to minimize downtime.
-*   Ensure rollback procedures are in place.
-*   Automate deployments as much as possible using CI/CD pipelines.
+*   Ensure rollback procedures are well-defined and tested.
+*   Automate deployments as much as possible using CI/CD pipelines (see `.github/workflows/ci.yml` for a starting point).
 
-By addressing these points, you can significantly improve the reliability, security, and maintainability of the Email Management Application in a production environment.This is a good start for the `PRODUCTION_CHECKLIST.md`. I'll proceed with creating/updating the README files.
+### 5.2. Using Docker Compose for Deployment
+*   A `docker-compose.prod.yml` file is provided as a template for production-like deployments using Docker Compose. This file assumes you are pulling pre-built images from a Docker registry.
+*   **Key differences from `docker-compose.yml` (for development):**
+    *   Removes `build` contexts; specifies `image` names directly (e.g., `yourdockerhubusername/email-backend:${BACKEND_IMAGE_TAG:-latest}`).
+    *   Removes code-mounting volumes for backend and frontend; code is baked into the images.
+    *   Uses distinct volume names for production data (e.g., `postgres_data_prod`).
+    *   May adjust exposed ports for production (e.g., frontend Nginx on port 80).
+*   A `deploy_staging.sh.example` script is provided in the project root as a template for scripting deployment steps on a target server. This includes pulling images, managing containers, and (optionally) database backups.
 
-**Step 5: Update Project READMEs**
+### 5.3. Production `.env` File
+*   A `.env` file **must** be created on the production server in the same directory where `docker-compose.prod.yml` will be run.
+*   This file must contain all necessary environment variables with production-appropriate values, especially secrets. Refer to section 1.1 of this checklist and the root `README.md` for required variables.
+*   **Ensure this `.env` file is secured and has appropriate permissions.**
 
-**Root `README.md`**
+By addressing these points, you can significantly improve the reliability, security, and maintainability of the Email Management Application in a production environment.

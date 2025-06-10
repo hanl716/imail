@@ -1,0 +1,119 @@
+#!/bin/bash
+
+# deploy_staging.sh.example
+# Example script to deploy the application using Docker Compose to a staging/test server.
+# This script assumes it's run on the target deployment server,
+# and that Docker & Docker Compose are installed.
+
+set -e # Exit immediately if a command exits with a non-zero status.
+
+# --- Configuration ---
+# These variables should ideally be configured securely, e.g., via CI/CD environment variables
+# or a secure vault, rather than hardcoded or directly in a script.
+# For this example, they might be passed as arguments or set as environment variables before running.
+
+# Docker Registry Details (replace with your actual registry)
+DOCKER_REGISTRY_USER="${DOCKER_REGISTRY_USER:-yourdockerhubusername}" # Or your registry host if not Docker Hub
+BACKEND_IMAGE_NAME="${DOCKER_REGISTRY_USER}/email-backend"
+FRONTEND_IMAGE_NAME="${DOCKER_REGISTRY_USER}/email-frontend"
+
+# Image Tag (use Git SHA for specific versions, or 'latest' for the latest main build)
+# This could be passed as an argument: IMAGE_TAG=${1:-latest}
+IMAGE_TAG="${IMAGE_TAG:-latest}"
+
+# Path to the production Docker Compose file
+PROD_COMPOSE_FILE="docker-compose.prod.yml"
+
+# Path to the production .env file (this file MUST exist on the server and be secured)
+# Docker Compose will automatically look for a '.env' file in the directory where it's run.
+# Ensure your production secrets are in this .env file.
+# For example, copy a template and fill it, or manage it via secure means.
+# cp .env.prod.template .env # If you have a template
+ENV_FILE_PATH=".env" # Assumes .env is in the same directory as docker-compose.prod.yml
+
+echo "--- Starting Deployment to Staging ---"
+echo "Using Image Tag: ${IMAGE_TAG}"
+echo "Backend Image: ${BACKEND_IMAGE_NAME}:${IMAGE_TAG}"
+echo "Frontend Image: ${FRONTEND_IMAGE_NAME}:${IMAGE_TAG}"
+
+# 0. Check for necessary files
+if [ ! -f "$PROD_COMPOSE_FILE" ]; then
+    echo "Error: Production Docker Compose file ($PROD_COMPOSE_FILE) not found!"
+    exit 1
+fi
+if [ ! -f "$ENV_FILE_PATH" ]; then
+    echo "Error: Production .env file ($ENV_FILE_PATH) not found!"
+    echo "Please create it with necessary production/staging secrets."
+    exit 1
+fi
+
+# 1. Log in to Docker Registry (if images are private)
+# This step might require DOCKER_REGISTRY_PASSWORD to be set as an environment variable
+# if [ -n "$DOCKER_REGISTRY_USER" ] && [ -n "$DOCKER_REGISTRY_PASSWORD" ]; then
+#   echo "Logging in to Docker registry..."
+#   echo "$DOCKER_REGISTRY_PASSWORD" | docker login "$DOCKER_REGISTRY_USER" --username "$DOCKER_REGISTRY_USER" --password-stdin
+# fi
+# For Docker Hub, if using a token: docker login -u yourusername -p yourtoken
+
+# 2. Pull the specific (or latest) images from the registry
+echo "Pulling latest application images..."
+# docker-compose -f ${PROD_COMPOSE_FILE} pull will use image definitions in the compose file
+# Ensure image names in docker-compose.prod.yml are like:
+# yourdockerhubusername/email-backend:${BACKEND_IMAGE_TAG:-latest}
+# And BACKEND_IMAGE_TAG is set in the .env file or passed to docker-compose
+# For this script, we'll rely on the tags being 'latest' or the script setting the tag vars
+# export BACKEND_IMAGE_TAG=${IMAGE_TAG} # Make available to docker-compose
+# export FRONTEND_IMAGE_TAG=${IMAGE_TAG} # Make available to docker-compose
+
+# Simpler: ensure docker-compose.prod.yml directly uses full image names with tags
+# Or, if docker-compose.prod.yml uses env vars for tags like ${BACKEND_IMAGE_TAG}, set them:
+# export BACKEND_IMAGE_TAG=${IMAGE_TAG}
+# export FRONTEND_IMAGE_TAG=${IMAGE_TAG}
+# Then docker-compose pull will get the correct tagged images.
+# For now, let's assume the docker-compose.prod.yml is structured to use these tags or 'latest'.
+
+docker pull "${BACKEND_IMAGE_NAME}:${IMAGE_TAG}"
+docker pull "${FRONTEND_IMAGE_NAME}:${IMAGE_TAG}"
+# No need to pull postgres, rabbitmq, redis unless custom images are used for those.
+
+# 3. (Optional but Recommended) Backup database before bringing services down
+# echo "Backing up database (if applicable)..."
+# Example: (Assumes 'db' is the service name in your prod compose file)
+# docker-compose -f "${PROD_COMPOSE_FILE}" exec -T db pg_dump -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" > "/opt/backups/email_manager_db_backup_$(date +%Y%m%d_%H%M%S).sql"
+# Ensure POSTGRES_USER and POSTGRES_DB are available if using them here.
+
+# 4. Stop and remove old application containers
+# This ensures a clean start with the new images.
+# Data volumes for db, redis, rabbitmq will persist.
+echo "Stopping and removing old application containers (backend, frontend, celery)..."
+docker-compose -f "${PROD_COMPOSE_FILE}" down --remove-orphans
+
+# 5. Start new application containers with the updated images
+# The -d flag runs them in detached mode.
+# --remove-orphans cleans up any containers for services no longer defined (good practice).
+echo "Starting new application containers..."
+docker-compose -f "${PROD_COMPOSE_FILE}" up -d --remove-orphans
+# This will start all services defined in the prod compose file.
+# The backend CMD already includes 'alembic upgrade head'.
+
+# 6. (Optional) Verify migrations ran if not part of app startup (already is for this app)
+# echo "Verifying database migrations (if run separately)..."
+# docker-compose -f "${PROD_COMPOSE_FILE}" exec backend alembic current # Example check
+
+# 7. (Optional) Prune old Docker images and volumes to save space
+# Use with caution, especially for volumes if you're unsure.
+# echo "Pruning old Docker assets..."
+# docker image prune -af # Force remove dangling images
+# docker volume prune -f # Force remove unused local volumes (be careful with this)
+
+echo "--- Deployment Finished ---"
+echo "Application services are starting up."
+echo "Monitor logs with: docker-compose -f \"${PROD_COMPOSE_FILE}\" logs -f"
+echo "Frontend should be accessible (check Nginx port mapping in ${PROD_COMPOSE_FILE})."
+echo "Backend API docs: (check backend port and path, e.g., /docs)."
+
+# (Optional) Logout from Docker Registry if login was performed
+# if [ -n "$DOCKER_REGISTRY_USER" ] && [ -n "$DOCKER_REGISTRY_PASSWORD" ]; then
+#   echo "Logging out from Docker registry..."
+#   docker logout "$DOCKER_REGISTRY_USER"
+# fi

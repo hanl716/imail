@@ -1,0 +1,22 @@
+[flake8]
+# Common ignores:
+# E501: line too long (Black often handles this, but good to set for non-Black users or as a fallback)
+# W503: line break before binary operator (Black prefers after, Flake8 default is before)
+# E203: whitespace before ':' (Black formatting can conflict with this Flake8 rule)
+ignore = E501, W503, E203
+max-line-length = 88 # To match Black's default
+exclude =
+    .git,
+    __pycache__,
+    docs,
+    venv,
+    .venv,
+    alembic/versions, # Auto-generated migration files
+    build,
+    dist
+# Per-file-ignores can be added if needed, e.g. for __init__.py files that only import
+# per-file-ignores =
+#    */__init__.py:F401
+max-complexity = 10 # Example complexity check, adjust as needed
+# Enable select extensions if desired, e.g. for Flake8 plugins
+# select = C,E,F,W,B,B950 (example, B for flake8-bugbear, B950 for line length by bugbear)
