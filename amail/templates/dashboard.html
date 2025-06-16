@@ -19,7 +19,14 @@
     {% if grouped_emails %}
         {% for sender, email_list in grouped_emails.items() %}
             <div class="sender-group">
-                <h4 class="sender-header">From: {{ sender }}</h4>
+                <h4 class="sender-header">
+                    From: {{ sender }}
+                    <a href="{{ url_for('auth.add_contact_from_email', email=sender, name=email_list[0].from_raw.split('<')[0].strip() if '<' in email_list[0].from_raw else sender) }}"
+                       class="add-contact-btn"
+                       title="Add {{ sender }} to contacts">
+                       &#43;👤 <!-- Plus person icon -->
+                    </a>
+                </h4>
                 {% for email in email_list %}
                     <div class="email-item">
                         <div>
@@ -31,6 +38,27 @@
                         <span class="email-date">({{ email.date }})</span>
                         <p class="email-body-snippet">{{ email.snippet }}</p>
                         <span class="email-source-account">Account: {{ email.account_name }}</span>
+
+                        {% if email.attachments %}
+                            <div class="attachments-container">
+                                <strong>Attachments:</strong>
+                                {% for attachment in email.attachments %}
+                                    <div class="attachment-item">
+                                        {% if attachment.drive_file_id %}
+                                            <a href="https://drive.google.com/file/d/{{ attachment.drive_file_id }}/view?usp=sharing" target="_blank" class="attachment-link">
+                                                <span class="attachment-icon">&#128206;</span> <!-- Paperclip icon -->
+                                                {{ attachment.filename }}
+                                            </a>
+                                        {% else %}
+                                            <span class="attachment-icon">&#128206;</span>
+                                            {{ attachment.filename }} (Not uploaded)
+                                        {% endif %}
+                                        <span class="attachment-details"> ({{ attachment.content_type }}, {{ (attachment.size / 1024)|round(1) }} KB)</span>
+                                    </div>
+                                {% endfor %}
+                                <!-- Future: Implement in-app viewing/editing for common attachment types. -->
+                            </div>
+                        {% endif %}
 
                         {% if email.reply_suggestions %}
                         <div class="reply-suggestions-container">

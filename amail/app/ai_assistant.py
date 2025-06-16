@@ -1,9 +1,49 @@
+"""
+Provides AI-powered assistance for email processing.
+
+This module includes the AIAssistant class, which offers functionalities like
+email categorization, reply suggestion generation, and extraction of information
+from specific email types (e.g., complaints, suggestions).
+It is designed to be extensible with more advanced AI models, including
+integration with external services like Cerebras.ai (currently mocked).
+"""
 import re
 import string
+from flask import current_app # For logging, especially when using CerebrasService
+
+# Attempt to import CerebrasService for optional advanced AI features.
+# If not found, Cerebras-dependent functionalities will be gracefully disabled.
+try:
+    from .cerebras_service import CerebrasService
+except ImportError:
+    CerebrasService = None # Define CerebrasService as None if import fails
+    # Log this information if running within a Flask app context.
+    # Avoids print statements during module import in non-app scenarios (e.g., direct testing if not careful).
+    if current_app:
+        current_app.logger.info("AIAssistant: CerebrasService module not found. Cerebras-specific features will be disabled.")
+    # else: # For direct script execution, a print might be acceptable if needed for debugging.
+        # print("INFO: AIAssistant: CerebrasService module not found. Cerebras-specific features will be disabled.")
+
 
 class AIAssistant:
-    def __init__(self):
-        # Simple list of stopwords, can be expanded or replaced with NLTK's list
+    """
+    AI Assistant for email processing tasks.
+
+    Provides methods for text preprocessing, email categorization (rule-based with
+    placeholders for advanced model integration), information extraction from
+    emails, and generating reply suggestions.
+    """
+    def __init__(self, cerebras_service_instance=None):
+        """
+        Initializes the AIAssistant.
+
+        Args:
+            cerebras_service_instance (CerebrasService, optional):
+                An instance of CerebrasService for leveraging advanced AI models.
+                If None, Cerebras-dependent features will be disabled. Defaults to None.
+        """
+        # Simple list of common English stopwords.
+        # For more comprehensive stopword removal, consider using libraries like NLTK or spaCy.
         self.stopwords = set([
             "i", "me", "my", "myself", "we", "our", "ours", "ourselves", "you", "your", "yours",
             "yourself", "yourselves", "he", "him", "his", "himself", "she", "her", "hers",
@@ -20,48 +60,94 @@ class AIAssistant:
             "ve", "ll", "m", "o", "subject", "body" # Added subject/body as they might appear from concatenation
         ])
 
-    def preprocess_text(self, text):
+    def preprocess_text(self, text_content):
         """
-        Preprocesses text: lowercase, remove punctuation, tokenize, remove stopwords.
-        Returns a list of processed tokens.
+        Performs basic text preprocessing on the given text content.
+        The steps include:
+        1. Convert to lowercase.
+        2. Remove punctuation.
+        3. Tokenize (split into words).
+        4. Remove common English stopwords (using the internal `self.stopwords` list).
+
+        Args:
+            text_content (str): The text string to preprocess.
+
+        Returns:
+            list: A list of processed (meaningful) tokens. Returns an empty list if input is empty.
         """
-        if not text:
+        if not text_content: # Handle empty input
             return []
-        # Lowercase
-        text = text.lower()
-        # Remove punctuation
-        text = text.translate(str.maketrans('', '', string.punctuation))
-        # Tokenize (split into words)
-        tokens = text.split()
-        # Remove stopwords
-        processed_tokens = [token for token in tokens if token not in self.stopwords]
-        return processed_tokens
 
-    def categorize_email(self, email_data):
+        # 1. Convert to lowercase
+        processed_text = text_content.lower()
+        # 2. Remove punctuation (creates a translation table that maps each punctuation char to None)
+        processed_text = processed_text.translate(str.maketrans('', '', string.punctuation))
+        # 3. Tokenize (split into words by whitespace)
+        tokens = processed_text.split()
+        # 4. Remove stopwords
+        # Note: This simple stopword list might need expansion or replacement for better results.
+        meaningful_tokens = [token for token in tokens if token not in self.stopwords and token.strip()]
+
+        return meaningful_tokens
+
+    def categorize_email(self, email_data_dict):
         """
-        Categorizes an email based on its content using simple rules.
-        email_data is a dictionary like {'subject': '...', 'body': '...', ...}
-        Returns a category string.
+        Categorizes an email based on its content (subject and snippet) using a rule-based system.
+        Includes a placeholder for future integration with Cerebras.ai for advanced categorization.
+
+        Args:
+            email_data_dict (dict): A dictionary containing email details, expected to have
+                                 'subject' and 'snippet' (or 'body') keys.
+
+        Returns:
+            str: The determined category string (e.g., "Finance", "Complaint", "General").
         """
-        subject = email_data.get('subject', '')
-        # Use 'snippet' as it's already extracted and shorter than full 'body'
-        body_snippet = email_data.get('snippet', email_data.get('body', ''))
+        subject = email_data_dict.get('subject', '')
+        # Use 'snippet' for brevity, fallback to 'body' if snippet isn't available
+        body_snippet = email_data_dict.get('snippet', email_data_dict.get('body', ''))
 
-        combined_text = subject + " " + body_snippet
-
-        if not combined_text.strip(): # If no text content
-            return "General"
-
-        processed_tokens = self.preprocess_text(combined_text)
-
-        # For rule-based, we can check tokens or the raw lowercase text
-        # Using raw lowercase text for simplicity with keywords that might be multi-word
-        # or to avoid issues if a keyword itself is a stopword (though unlikely for good keywords)
-
+        # Combine subject and snippet for rule-based matching, convert to lowercase.
+        # Preprocessing (tokenization, stopword removal) could be done here too for more advanced rules,
+        # but for simple keyword matching, lowercase combined text is often sufficient.
         text_for_rules = (subject.lower() + " " + body_snippet.lower())
 
-        # Refined Rule-Based Categorization
-        # Order matters: more specific rules should come first if there's overlap potential.
+        if not text_for_rules.strip(): # If no textual content to analyze
+            return "General" # Default category for empty emails
+
+        # --- Placeholder for Cerebras.ai Advanced Categorization ---
+        # If a CerebrasService instance is available, an attempt to use it for categorization
+        # could be made here. The result could override or augment the rule-based approach.
+        if hasattr(self, 'cerebras_service') and self.cerebras_service:
+            # This is a conceptual example. The actual 'task_type' and 'data' structure
+            # would depend on the specific Cerebras API for categorization.
+            payload_for_cerebras = {"email_subject": subject, "email_body_snippet": body_snippet}
+
+            # Log the intent to call Cerebras (actual call is mocked in CerebrasService for now)
+            logger = current_app.logger if current_app else print
+            logger.info(f"AIAssistant: Would call CerebrasService for advanced categorization. Data: {payload_for_cerebras}")
+
+            # --- Example of how one might integrate the result (conceptual) ---
+            # try:
+            #     cerebras_response = self.cerebras_service.call_cerebras_api(
+            #         task_type="advanced_email_categorization",
+            #         data=payload_for_cerebras
+            #     )
+            #     if cerebras_response and cerebras_response.get('status') in ['success_mocked', 'success_actual']: # Check for success
+            #         advanced_category = cerebras_response.get('result', {}).get('category_label')
+            #         confidence = cerebras_response.get('result', {}).get('confidence_score', 0)
+            #         if advanced_category and confidence > 0.7: # Example threshold
+            #             logger.info(f"AIAssistant: Using category '{advanced_category}' from Cerebras.")
+            #             # Potentially store more details from cerebras_response in email_data_dict
+            #             email_data_dict['advanced_category_details'] = cerebras_response.get('result')
+            #             return advanced_category # Return the category from Cerebras
+            # except Exception as e:
+            #     logger.error(f"AIAssistant: Error calling Cerebras for categorization: {e}")
+            # --- End Conceptual Cerebras Integration Example ---
+        # --- End Placeholder ---
+
+        # Rule-Based Categorization (serves as fallback or primary method)
+        # The order of these rules can be important if keywords overlap.
+        # More specific categories (like Complaint) should generally precede broader ones (like Support).
         if any(keyword in text_for_rules for keyword in ["complain", "complaint", "unhappy", "disappointed", "poor service", "problem with", "issue with"]):
             return "Complaint"
         if any(keyword in text_for_rules for keyword in ["suggest", "suggestion", "recommend", "idea", "improve", "feature request", "feedback"]):
@@ -70,54 +156,87 @@ class AIAssistant:
             return "Finance"
         if any(keyword in text_for_rules for keyword in ["meeting", "schedule", "appointment", "calendar", "zoom", "invite"]):
             return "Work/Calendar"
-        # "issue" was part of Support, but also Complaint. Complaint is more specific.
-        # If not a complaint, then it might be a general support request.
-        if any(keyword in text_for_rules for keyword in ["help", "support", "ticket", "query", "assistance", "issue", "problem"]): # "issue", "problem" can be here if not a complaint
+        if any(keyword in text_for_rules for keyword in ["help", "support", "ticket", "query", "assistance", "issue", "problem"]):
             return "Support"
         if any(keyword in text_for_rules for keyword in ["unsubscribe", "promotion", "offer", "discount", "sale"]):
             return "Promotions"
 
         return "General"
 
-    def extract_complaint_suggestion_info(self, email_data):
-        """
-        Extracts basic information from an email categorized as Complaint or Suggestion.
-        """
-        # Ensure datetime_obj is used if available, otherwise fall back to raw date string
-        date_to_log = email_data.get('datetime_obj')
-        if date_to_log and hasattr(date_to_log, 'isoformat'): # Check if it's a datetime object
-            date_to_log = date_to_log.isoformat()
-        else: # Fallback to the original date string from email
-            date_to_log = email_data.get('date', '')
 
-        return {
-            "type": email_data.get('category', 'Unknown'), # Should be "Complaint" or "Suggestion"
-            "sender": email_data.get('from_email', 'Unknown Sender'),
-            "subject": email_data.get('subject', 'No Subject'),
-            "date": date_to_log,
-            "summary": email_data.get('snippet', email_data.get('body', ''))[:200], # Increased summary length
-            "source_account": email_data.get('account_name', 'Unknown Account')
+    def extract_complaint_suggestion_info(self, email_data_dict):
+        """
+        Extracts structured information from an email that has been categorized
+        as a "Complaint" or "Suggestion".
+
+        Args:
+            email_data_dict (dict): The email data dictionary, which should include
+                                 'category', 'from_email', 'subject', 'date' (or 'datetime_obj'),
+                                 'snippet' (or 'body'), and 'account_name'.
+
+        Returns:
+            dict: A dictionary containing structured information:
+                  {'type', 'sender', 'subject', 'date', 'summary', 'source_account'}.
+        """
+        # Use the parsed datetime_obj for logging if available and convert to ISO format string.
+        # Otherwise, fall back to the original raw date string from the email header.
+        date_value_to_log = email_data_dict.get('datetime_obj')
+        if date_value_to_log and hasattr(date_value_to_log, 'isoformat'): # Check if it's a datetime object
+            date_value_to_log = date_value_to_log.isoformat()
+        else:
+            date_value_to_log = email_data_dict.get('date', '') # Fallback to original date string
+
+        extracted_info = {
+            "type": email_data_dict.get('category', 'Unknown Type'), # Should be "Complaint" or "Suggestion"
+            "sender": email_data_dict.get('from_email', 'Unknown Sender'),
+            "subject": email_data_dict.get('subject', 'No Subject Provided'),
+            "date": date_value_to_log,
+            # Take a slightly longer summary for complaints/suggestions.
+            "summary": email_data_dict.get('snippet', email_data_dict.get('body', ''))[:250],
+            "source_account": email_data_dict.get('account_name', 'Unknown Account')
         }
+        return extracted_info
 
-    # --- Placeholder for Advanced Information Extraction ---
-    # def extract_detailed_info_ner(self, text):
+    # --- Placeholder for Advanced Information Extraction (NER, Topic Modeling) ---
+    # def extract_advanced_details(self, email_text_content):
     #     """
-    #     (Future) Uses NER or other NLP techniques to extract more detailed information.
-    #     For example: product names, specific issues, sentiment analysis score, etc.
+    #     (Future Enhancement)
+    #     Uses more advanced NLP techniques like Named Entity Recognition (NER),
+    #     topic modeling, or fine-tuned models to extract richer, structured details
+    #     from email content (e.g., specific product names, issue types, sentiment scores).
+    #     This could also leverage self.cerebras_service if available and applicable.
+    #
+    #     Args:
+    #         email_text_content (str): The full text content of the email.
+    #
+    #     Returns:
+    #         dict: A dictionary of extracted advanced details.
     #     """
-    #     # 1. Pre-trained NER models (e.g., spaCy, NLTK, Hugging Face Transformers)
-    #     #    to identify entities like PRODUCT, ORGANIZATION, LOCATION, PERSON.
-    #     # 2. Custom NER model fine-tuned on domain-specific data.
-    #     # 3. Topic modeling (e.g., LDA, NMF) to identify key themes.
-    #     # 4. Sentiment analysis to quantify the tone (positive, negative, neutral).
-    #     print("Advanced information extraction not yet implemented.")
-    #     return {"entities": [], "sentiment": "neutral", "topics": []}
+    #     logger = current_app.logger if current_app else print
+    #     logger.info("AIAssistant: Advanced detail extraction (NER, topic modeling) not yet implemented.")
+    #     # Example: if self.cerebras_service:
+    #     #     ner_results = self.cerebras_service.call_cerebras_api("ner", {"text": email_text_content})
+    #     #     return {"entities": ner_results.get("entities", [])}
+    #     return {"detected_entities": [], "main_topics": [], "sentiment_score": 0.0}
     # --- End Placeholder ---
 
-    def generate_reply_suggestions(self, email_data):
+    def generate_reply_suggestions(self, email_data_dict):
         """
-        Generates simple reply suggestions based on email category and content.
-        email_data is a dictionary like {'subject': '...', 'snippet': '...', 'category': '...'}
+        Generates a list of simple, rule-based reply suggestions based on the
+        email's category and content (subject, snippet).
+
+        Args:
+            email_data_dict (dict): A dictionary containing email details, including
+                                 'category', 'subject', and 'snippet'.
+
+        Returns:
+            list: A list of up to 3 suggested reply strings.
+        """
+        category = email_data_dict.get('category', 'General')
+        subject_lower = email_data_dict.get('subject', '').lower()
+        snippet_lower = email_data_dict.get('snippet', '').lower()
+        # Combine subject and snippet for keyword checking in reply generation.
+        text_content_for_replies = subject_lower + " " + snippet_lower
         Returns a list of suggestion strings.
         """
         category = email_data.get('category', 'General')
@@ -203,47 +322,100 @@ class AIAssistant:
     # --- End Placeholder for Advanced Reply Generation ---
 
 
-    # --- Placeholder for Future Model Training ---
-    # def train_classifier(self, X_train_texts, y_train_labels):
+    # --- Placeholder for Future Model Training & Prediction (Scikit-learn based) ---
+    # These methods illustrate where a more traditional ML model (e.g., Naive Bayes for text classification)
+    # could be integrated. This would typically involve:
+    # 1. Collecting and labeling a dataset of emails.
+    # 2. Training a classifier (e.g., `train_sklearn_classifier` below).
+    # 3. Saving the trained model (vectorizer and classifier).
+    # 4. Loading the model in the AIAssistant for making predictions (`predict_category_with_sklearn_model`).
+
+    # def train_sklearn_classifier(self, X_train_texts, y_train_labels, model_save_path="path_to_save_model.joblib"):
     #     """
+    #     (Future Enhancement)
     #     Trains a text classifier.
-    #     X_train_texts: list of email texts (e.g., subject + body)
-    #     y_train_labels: list of corresponding categories
+    #     Trains a scikit-learn text classifier and saves it.
+    #
+    #     Args:
+    #         X_train_texts (list): List of email text samples for training.
+    #         y_train_labels (list): List of corresponding category labels.
+    #         model_save_path (str, optional): Path to save the trained model.
     #     """
     #     from sklearn.feature_extraction.text import TfidfVectorizer
     #     from sklearn.naive_bayes import MultinomialNB
-    #     from sklearn.pipeline import make_pipeline
+    #     from sklearn.pipeline import Pipeline
+    #     # from joblib import dump # For saving the model
     #
-    #     # Create a pipeline: TF-IDF Vectorizer -> Naive Bayes Classifier
-    #     self.model = make_pipeline(
-    #         TfidfVectorizer(preprocessor=self.preprocess_text_for_tfidf), # Custom preprocessor or default
-    #         MultinomialNB()
-    #     )
+    #     # Define a text processing function for TfidfVectorizer that uses our existing preprocess_text
+    #     def_tfidf_preprocessor(text_content_str):
+    #         return " ".join(self.preprocess_text(text_content_str)) # TF-IDF expects space-separated tokens
+    #
+    #     # Create a scikit-learn pipeline: TF-IDF Vectorizer -> Naive Bayes Classifier
+    #     # This pipeline handles both feature extraction and classification.
+    #     sklearn_text_classifier = Pipeline([
+    #         ('tfidf', TfidfVectorizer(preprocessor=def_tfidf_preprocessor)),
+    #         ('clf', MultinomialNB()), # Multinomial Naive Bayes is common for text
+    #     ])
     #
     #     # Train the model
-    #     self.model.fit(X_train_texts, y_train_labels)
-    #     print("Classifier trained.")
+    #     sklearn_text_classifier.fit(X_train_texts, y_train_labels)
+    #     logger = current_app.logger if current_app else print
+    #     logger.info(f"Scikit-learn classifier trained. Saving to {model_save_path}")
+    #
+    #     # Save the trained pipeline (vectorizer + classifier)
+    #     # dump(sklearn_text_classifier, model_save_path)
+    #     # self.sklearn_model = sklearn_text_classifier # Optionally keep in memory
+    #     # print(f"Model saved to {model_save_path}")
 
-    # def preprocess_text_for_tfidf(self, text):
-    #     # For TF-IDF, we usually want to return a string of space-separated tokens
-    #     return " ".join(self.preprocess_text(text))
 
-    # def predict_category_with_model(self, email_text):
+    # def load_sklearn_model(self, model_load_path="path_to_save_model.joblib"):
+    #    """
+    #    (Future Enhancement) Loads a pre-trained scikit-learn model.
+    #    """
+    #    from joblib import load
+    #    try:
+    #        self.sklearn_model = load(model_load_path)
+    #        logger = current_app.logger if current_app else print
+    #        logger.info(f"Scikit-learn model loaded successfully from {model_load_path}.")
+    #    except FileNotFoundError:
+    #        logger = current_app.logger if current_app else print
+    #        logger.error(f"Scikit-learn model file not found at {model_load_path}.")
+    #        self.sklearn_model = None # Ensure it's None if loading fails
+    #    except Exception as e:
+    #        logger = current_app.logger if current_app else print
+    #        logger.error(f"Error loading scikit-learn model: {e}")
+    #        self.sklearn_model = None
+
+
+    # def predict_category_with_sklearn_model(self, email_text_content):
     #     """
-    #     Predicts category using the trained scikit-learn model.
+    #     (Future Enhancement) Predicts email category using the loaded scikit-learn model.
+    #     If the model is not loaded, it could fall back to rule-based categorization or raise an error.
+    #
+    #     Args:
+    #         email_text_content (str): The combined text (e.g., subject + body) of the email.
+    #
+    #     Returns:
+    #         str: The predicted category string, or None if prediction fails.
     #     """
-    #     if hasattr(self, 'model') and self.model:
-    #         preprocessed_text_for_model = self.preprocess_text_for_tfidf(email_text)
-    #         return self.model.predict([preprocessed_text_for_model])[0]
+    #     if hasattr(self, 'sklearn_model') and self.sklearn_model:
+    #         # The TfidfVectorizer in the pipeline will use the custom preprocessor.
+    #         # The input to `predict` should be a list or iterable of raw text strings.
+    #         try:
+    #             prediction = self.sklearn_model.predict([email_text_content])
+    #             return prediction[0] # predict returns an array, get the first element
+    #         except Exception as e:
+    #             logger = current_app.logger if current_app else print
+    #             logger.error(f"Error during scikit-learn model prediction: {e}")
+    #             return None # Or a default category
     #     else:
-    #         # Fallback to rule-based if model not trained/loaded
-    #         # This part would need to be adjusted based on how email_text is structured here
-    #         # For now, this method assumes it's called by a wrapper that handles data structure
-    #         print("Model not available, falling back to rules (if implemented in this path).")
-    #         # This is just an example; the actual call to rule-based would need email_data
-    #         # return self.categorize_email_rule_based_from_text(email_text) # Hypothetical
-    #         return "Error: Model not trained"
-    # --- End Placeholder ---
+    #         logger = current_app.logger if current_app else print
+    #         logger.warning("Scikit-learn model not available for prediction. Falling back to rules or default.")
+    #         # Fallback strategy could be to call the rule-based categorizer
+    #         # return self.categorize_email_rule_based(email_text_content) # if such a method exists
+    #         return None # Or a default "Uncategorized"
+    # --- End Scikit-learn Placeholder ---
+
 
 if __name__ == '__main__':
     # Example Usage (for testing this file directly)

@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block title %}Contacts - Amail{% endblock %}
+
+{% block content %}
+    <h2>Contacts</h2>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <ul class="flashes">
+            {% for category, message in messages %}
+            <li class="{{ category }}">{{ message }}</li>
+            {% endfor %}
+            </ul>
+        {% endif %}
+    {% endwith %}
+
+    <div class="contacts-section">
+        <h3>All Contacts ({{ contacts|length }})</h3>
+        {% if contacts %}
+            <table class="contacts-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Email Addresses</th>
+                        <th>Aliases</th>
+                        <th>Notes</th>
+                        <!-- <th>Contact ID</th> -->
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for contact in contacts %}
+                    <tr>
+                        <td>{{ contact.name }}</td>
+                        <td>{{ contact.email_addresses|join(', ') }}</td>
+                        <td>{{ contact.aliases|join(', ') if contact.aliases else '-' }}</td>
+                        <td>{{ contact.notes|truncate(100, True) if contact.notes else '-' }}</td>
+                        <!-- <td><small>{{ contact.contact_id }}</small></td> -->
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <p>No contacts found. You can add contacts from the email dashboard.</p>
+        {% endif %}
+    </div>
+
+    <hr style="margin: 30px 0;">
+
+    <div class="duplicates-section">
+        <h3>Potential Duplicate Contacts</h3>
+        {% if duplicate_groups %}
+            {% for group in duplicate_groups %}
+                <div class="duplicate-group">
+                    <h4>Group based on name: "{{ group[0]._normalized_name_for_debug if group[0]._normalized_name_for_debug else group[0].name|lower }}" (Example name)</h4>
+                    {# Note: _normalized_name_for_debug is not actually in contact dict. This is conceptual.
+                       The grouping key isn't directly passed to template, so we show first contact's name as example for group. #}
+                    <table class="duplicate-contacts-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Email Addresses</th>
+                                <th>Notes</th>
+                                <th>Contact ID</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for contact in group %}
+                            <tr>
+                                <td>{{ contact.name }}</td>
+                                <td>{{ contact.email_addresses|join(', ') }}</td>
+                                <td>{{ contact.notes|truncate(100, True) if contact.notes else '-' }}</td>
+                                <td><small>{{ contact.contact_id }}</small></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    <p style="text-align: right; margin-top: 5px;">
+                        <button class="btn-small" onclick="alert('Merge functionality not yet implemented.')">Merge this Group (Future)</button>
+                    </p>
+                </div>
+            {% endfor %}
+        {% else %}
+            <p>No potential duplicates detected with the current logic.</p>
+        {% endif %}
+    </div>
+
+    <!-- Placeholder for Future Enhancements -->
+    <div style="margin-top: 30px; padding:15px; background-color:#f0f0f0; border-radius:5px;">
+        <h4>Future Contact Management Enhancements:</h4>
+        <ul>
+            <li>Manual contact creation/editing form.</li>
+            <li>Merging duplicate contacts.</li>
+            <li>More robust duplicate detection algorithms.</li>
+            <li>Linking contacts to specific emails or communication threads.</li>
+            <li>Contact groups/tags.</li>
+        </ul>
+    </div>
+
+{% endblock %}
+
+{% block styles %}
+{{ super() }}
+<style>
+    .contacts-table, .duplicate-contacts-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 20px;
+    }
+    .contacts-table th, .contacts-table td,
+    .duplicate-contacts-table th, .duplicate-contacts-table td {
+        border: 1px solid #ddd;
+        padding: 8px;
+        text-align: left;
+        vertical-align: top;
+    }
+    .contacts-table th, .duplicate-contacts-table th {
+        background-color: #f2f2f2;
+    }
+    .duplicate-group {
+        padding: 15px;
+        border: 1px solid #e0e0e0;
+        margin-bottom: 20px;
+        background-color: #fdfdfd;
+        border-radius: 5px;
+    }
+    .duplicate-group h4 {
+        margin-top: 0;
+        color: #555;
+    }
+    .btn-small {
+        padding: 5px 10px;
+        font-size: 0.9em;
+    }
+</style>
+{% endblock %}
