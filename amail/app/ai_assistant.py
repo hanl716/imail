@@ -44,9 +44,13 @@ class AIAssistant:
         """
         # Simple list of common English stopwords.
         # For more comprehensive stopword removal, consider using libraries like NLTK or spaCy.
+        self.cerebras_service = cerebras_service_instance # Store the instance
+
+        # Simple list of common English stopwords.
+        # For more comprehensive stopword removal, consider using libraries like NLTK or spaCy.
         self.stopwords = set([
-            "i", "me", "my", "myself", "we", "our", "ours", "ourselves", "you", "your", "yours",
-            "yourself", "yourselves", "he", "him", "his", "himself", "she", "her", "hers",
+            "i", "me", "my", "myself", "we", "our", "ours", "ourselves", "you", "your", "yours", #NOSONAR
+            "yourself", "yourselves", "he", "him", "his", "himself", "she", "her", "hers", #NOSONAR
             "herself", "it", "its", "itself", "they", "them", "their", "theirs", "themselves",
             "what", "which", "who", "whom", "this", "that", "these", "those", "am", "is", "are",
             "was", "were", "be", "been", "being", "have", "has", "had", "having", "do", "does",

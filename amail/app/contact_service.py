@@ -16,12 +16,11 @@ from collections import defaultdict # For grouping contacts during duplicate det
 from flask import current_app   # For accessing Flask app context (e.g., logger)
 
 # --- Path Definitions ---
-# Assumes this service file is in 'amail/app/'.
-# APP_ROOT determines the root directory of the 'amail' package.
-APP_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # Resolves to 'amail/'
-DATA_DIR = os.path.join(APP_ROOT, 'data') # Path to 'amail/data/'
-# Default path for the JSON file where contacts are stored.
-CONTACTS_FILE_PATH = os.path.join(DATA_DIR, 'contacts.json')
+# These are defined at the module level for default paths.
+# Services can be instantiated with specific paths for testing.
+_APP_ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # Resolves to 'amail/'
+_DEFAULT_DATA_DIR = os.path.join(_APP_ROOT_DIR, 'data')
+_DEFAULT_CONTACTS_FILE = os.path.join(_DEFAULT_DATA_DIR, 'contacts.json')
 # --- End Path Definitions ---
 
 class ContactService:
@@ -30,33 +29,39 @@ class ContactService:
     Handles loading from and saving to a JSON file, adding new contacts,
     finding contacts, and suggesting potential duplicates.
     """
-    def __init__(self, contacts_file_path=None):
+    def __init__(self, contacts_file_path=None, data_dir_path=None):
         """
         Initializes the ContactService.
 
         Args:
             contacts_file_path (str, optional):
-                The path to the JSON file used for storing contacts.
-                If None, defaults to `CONTACTS_FILE_PATH`.
+                Path to the JSON file for contacts. Defaults to `_DEFAULT_CONTACTS_FILE`.
+            data_dir_path (str, optional):
+                Path to the data directory. Defaults to `_DEFAULT_DATA_DIR`.
+                This is used by `_ensure_data_dir_exists`.
         """
-        self.contacts_file_path = contacts_file_path or CONTACTS_FILE_PATH
-        self._ensure_data_dir_exists() # Ensure the data directory exists
-        self.contacts = self.load_contacts() # Load contacts into memory on initialization
+        self.data_dir = data_dir_path or _DEFAULT_DATA_DIR
+        # If a specific contacts_file_path is given, use it. Otherwise, construct from data_dir.
+        self.contacts_file_path = contacts_file_path or os.path.join(self.data_dir, os.path.basename(_DEFAULT_CONTACTS_FILE))
+
+        self._ensure_data_dir_exists() # Ensure the data directory (custom or default) exists
+        self.contacts = self.load_contacts() # Load contacts into memory
 
     def _ensure_data_dir_exists(self):
         """
-        Ensures that the data directory (defined by `DATA_DIR`) exists.
+        Ensures that the data directory (self.data_dir) exists.
         Creates the directory if it's missing.
         Logs errors if directory creation fails.
         """
-        if not os.path.exists(DATA_DIR):
+        # Use self.data_dir which might be custom or default
+        if not os.path.exists(self.data_dir):
             try:
-                os.makedirs(DATA_DIR)
+                os.makedirs(self.data_dir)
+                logger = current_app.logger if current_app else print
+                logger.info(f"Created data directory: {self.data_dir}")
             except OSError as e:
-                if current_app:
-                    current_app.logger.error(f"Error creating data directory {DATA_DIR}: {e}")
-                else:
-                    print(f"Error creating data directory {DATA_DIR}: {e}")
+                logger = current_app.logger if current_app else print
+                logger.error(f"Error creating data directory {self.data_dir}: {e}")
 
     def load_contacts(self):
         """

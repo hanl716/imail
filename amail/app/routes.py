@@ -45,49 +45,56 @@ cerebras_service_instance = CerebrasService()
 # AIAssistant can then internally decide whether/how to use Cerebras features.
 ai_assistant = AIAssistant(cerebras_service_instance=cerebras_service_instance)
 
-# --- Constants for Data Storage ---
-# Path to the directory where data files (CSV, JSON) are stored.
-# Resolves to 'amail/data/'
-DATA_DIR = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), # Current directory (amail/app)
-    '..', # Parent directory (amail)
-    'data'
-)
-# Filename for the feedback log CSV.
-FEEDBACK_FILE = os.path.join(DATA_DIR, 'complaints_suggestions.csv')
-# Headers for the feedback CSV file.
-FEEDBACK_FILE_HEADERS = ["type", "sender", "subject", "date", "summary", "source_account"]
-# --- End Constants ---
+# --- Path Helper Functions for Data Files (to respect testing overrides) ---
 
-# --- Helper Functions ---
+def get_data_dir():
+    """Returns the appropriate data directory path, respecting test overrides."""
+    return current_app.config.get('DATA_DIR_OVERRIDE') or \
+           os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data')
+
+def get_feedback_file_path():
+    """Returns the appropriate feedback log file path, respecting test overrides."""
+    return current_app.config.get('FEEDBACK_FILE_PATH_OVERRIDE') or \
+           os.path.join(get_data_dir(), 'complaints_suggestions.csv')
+
+# Headers for the feedback CSV file - remains constant.
+FEEDBACK_FILE_HEADERS = ["type", "sender", "subject", "date", "summary", "source_account"]
+# --- End Path Helper Functions ---
+
+
+# --- File I/O Helper Functions (using path helpers) ---
 def ensure_data_dir_exists():
-    """Ensures that the DATA_DIR directory exists. Creates it if not."""
-    if not os.path.exists(DATA_DIR):
+    """Ensures that the data directory exists. Creates it if not."""
+    data_dir = get_data_dir()
+    if not os.path.exists(data_dir):
         try:
-            os.makedirs(DATA_DIR)
-            current_app.logger.info(f"Created data directory: {DATA_DIR}")
+            os.makedirs(data_dir)
+            current_app.logger.info(f"Created data directory: {data_dir}")
         except OSError as e:
-            current_app.logger.error(f"Error creating data directory {DATA_DIR}: {e}")
+            current_app.logger.error(f"Error creating data directory {data_dir}: {e}")
 
 def log_feedback_to_csv(feedback_data):
     """
-    Logs feedback data (complaints/suggestions) to the FEEDBACK_FILE CSV.
+    Logs feedback data (complaints/suggestions) to the feedback CSV file.
     Creates the file and writes headers if it doesn't exist.
+    Uses `get_feedback_file_path()` to determine the correct file path.
 
     Args:
         feedback_data (dict): A dictionary containing the feedback information.
-                              Keys should match FEEDBACK_FILE_HEADERS.
+                              Keys should match `FEEDBACK_FILE_HEADERS`.
     """
-    ensure_data_dir_exists() # Make sure the 'data' directory is there
-    file_exists = os.path.isfile(FEEDBACK_FILE)
+    ensure_data_dir_exists() # Ensure the correct data directory is there
+    feedback_file = get_feedback_file_path()
+    file_exists = os.path.isfile(feedback_file)
     try:
-        with open(FEEDBACK_FILE, 'a', newline='', encoding='utf-8') as csvfile:
+        with open(feedback_file, 'a', newline='', encoding='utf-8') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=FEEDBACK_FILE_HEADERS)
-            if not file_exists:
+            if not file_exists: # If file doesn't exist or is empty, write header
                 writer.writeheader()
             writer.writerow(feedback_data)
     except IOError as e:
-        current_app.logger.error(f"Error writing to CSV {FEEDBACK_FILE}: {e}")
+        current_app.logger.error(f"Error writing to CSV {feedback_file}: {e}")
+# --- End File I/O Helper Functions ---
 
 # --- Authentication Routes ---
 
@@ -334,8 +341,12 @@ def feedback_log():
 def contacts_page():
     """
     Displays the contacts page, showing all contacts and potential duplicates.
+    Uses ContactService, respecting test configuration for file paths.
     """
-    contact_service = ContactService() # Initializes/loads contacts from JSON
+    contacts_file = current_app.config.get('CONTACTS_FILE_PATH_OVERRIDE') # Get test path if set
+    data_dir = current_app.config.get('DATA_DIR_OVERRIDE') # Get test data dir if set
+    contact_service = ContactService(contacts_file_path=contacts_file, data_dir_path=data_dir)
+
     all_contacts = contact_service.contacts # Access loaded contacts
 
     # Sort contacts by name for consistent display in the "All Contacts" table
@@ -364,14 +375,14 @@ def add_contact_from_email():
         return redirect(request.referrer or url_for('auth.dashboard')) # Redirect back or to dashboard
 
     # If name is not provided or is just the email, attempt to derive a cleaner name.
-    # For example, from "john.doe@example.com", derive "John Doe".
     if not name or name == email:
         name_part = email.split('@')[0]
-        # Replace common email separators with space and capitalize words
         name = name_part.replace('.', ' ').replace('_', ' ').replace('-', ' ').title() if name_part else email
 
-    contact_service = ContactService()
-    # `add_contact` handles logic for new vs. updating existing contact based on email.
+    contacts_file = current_app.config.get('CONTACTS_FILE_PATH_OVERRIDE')
+    data_dir = current_app.config.get('DATA_DIR_OVERRIDE')
+    contact_service = ContactService(contacts_file_path=contacts_file, data_dir_path=data_dir)
+
     contact, message = contact_service.add_contact(name=name, email_address=email)
 
     if contact: # If add_contact returned a contact object (success or update)
