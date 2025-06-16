@@ -1,0 +1,215 @@
+body {
+    font-family: sans-serif;
+    margin: 0;
+    background-color: #f4f4f4;
+    color: #333;
+}
+
+nav {
+    background-color: #333;
+    color: white;
+    padding: 1em;
+    text-align: center;
+}
+
+nav a {
+    color: white;
+    margin: 0 10px;
+    text-decoration: none;
+}
+
+nav a:hover {
+    text-decoration: underline;
+}
+
+nav span {
+    margin: 0 10px;
+}
+
+main {
+    padding: 20px;
+    max-width: 900px;
+    margin: 20px auto;
+    background-color: white;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+}
+
+footer {
+    text-align: center;
+    padding: 10px;
+    margin-top: 20px;
+    font-size: 0.8em;
+    color: #666;
+}
+
+h2, h3 {
+    color: #333;
+}
+
+.flashes {
+    list-style-type: none;
+    padding: 0;
+}
+
+.flashes li {
+    padding: 10px;
+    margin-bottom: 10px;
+    border-radius: 4px;
+}
+
+.flashes .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+.flashes .danger { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+.flashes .info { background-color: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+.flashes .warning { background-color: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
+
+
+.sender-group {
+    margin-bottom: 20px;
+    padding: 15px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    background-color: #f9f9f9;
+}
+
+.sender-header {
+    font-size: 1.2em;
+    font-weight: bold;
+    margin-bottom: 10px;
+    color: #0056b3;
+}
+
+.email-item {
+    border-top: 1px solid #eee;
+    padding-top: 10px;
+    margin-top: 10px;
+}
+
+.email-item:first-child {
+    border-top: none;
+    padding-top: 0;
+    margin-top: 0;
+}
+
+.email-subject {
+    font-weight: bold;
+}
+
+.email-date {
+    font-size: 0.9em;
+    color: #555;
+    margin-left: 10px;
+}
+
+.email-body-snippet {
+    font-size: 0.9em;
+    color: #444;
+    margin-top: 5px;
+    white-space: pre-wrap; /* Preserve whitespace for snippet */
+    word-break: break-word;
+}
+
+.email-source-account {
+    font-size: 0.8em;
+    color: #777;
+    font-style: italic;
+    display: block; /* On its own line */
+    margin-top: 3px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+}
+
+th, td {
+    border: 1px solid #ccc;
+    padding: 8px;
+    text-align: left;
+}
+
+th {
+    background-color: #e9e9e9;
+}
+
+form p {
+    margin-bottom: 10px;
+}
+form label {
+    display: block;
+    margin-bottom: 5px;
+}
+form input[type="text"], form input[type="password"] {
+    width: calc(100% - 22px);
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+form input[type="submit"] {
+    background-color: #007bff;
+    color: white;
+    padding: 10px 15px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+form input[type="submit"]:hover {
+    background-color: #0056b3;
+}
+
+/* For login/register links */
+a {
+    color: #007bff;
+}
+a:hover {
+    text-decoration: underline;
+}
+
+.email-category-tag {
+    display: inline-block;
+    padding: 2px 6px;
+    font-size: 0.75em;
+    font-weight: bold;
+    color: white;
+    background-color: #007bff; /* Default blue */
+    border-radius: 4px;
+    margin-left: 10px;
+    vertical-align: middle;
+}
+
+/* Optional: Different colors for different categories */
+.email-category-tag.Finance { background-color: #28a745; } /* Green */
+.email-category-tag.Work-Calendar { background-color: #ffc107; color: #333; } /* Yellow */
+.email-category-tag.Support { background-color: #dc3545; } /* Red */
+.email-category-tag.Promotions { background-color: #17a2b8; } /* Teal */
+/* General category is not shown by default, but if it were: */
+/* .email-category-tag.General { background-color: #6c757d; } */ /* Gray */
+
+.reply-suggestions-container {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px dashed #eee;
+}
+
+.reply-suggestions-container strong {
+    font-size: 0.9em;
+    color: #333;
+    margin-right: 5px;
+}
+
+.reply-suggestion-btn {
+    background-color: #6c757d; /* Grey */
+    color: white;
+    border: none;
+    padding: 4px 8px;
+    margin-right: 5px;
+    margin-bottom: 5px; /* For wrapping */
+    border-radius: 4px;
+    font-size: 0.85em;
+    cursor: pointer;
+    transition: background-color 0.2s ease-in-out;
+}
+
+.reply-suggestion-btn:hover {
+    background-color: #5a6268; /* Darker Grey */
+}

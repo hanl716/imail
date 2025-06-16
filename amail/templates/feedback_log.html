@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}Feedback Log - Amail{% endblock %}
+
+{% block content %}
+    <h2>Complaints and Suggestions Log</h2>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <ul class="flashes">
+        {% for category, message in messages %}
+          <li class="{{ category }}">{{ message }}</li>
+        {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+
+    {% if feedback_items %}
+        <p>Total items: {{ feedback_items|length }}</p>
+        <div style="overflow-x:auto;"> <!-- For responsiveness on small screens -->
+            <table>
+                <thead>
+                    <tr>
+                        <th>Type</th>
+                        <th>Sender</th>
+                        <th>Subject</th>
+                        <th>Date</th>
+                        <th>Summary</th>
+                        <th>Source Account</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in feedback_items %}
+                    <tr>
+                        <td>
+                            <span class="email-category-tag {{ item.type | replace('/', '-') }}">{{ item.type }}</span>
+                        </td>
+                        <td>{{ item.sender }}</td>
+                        <td>{{ item.subject }}</td>
+                        <td>{{ item.date }}</td>
+                        <td>{{ item.summary }}</td>
+                        <td>{{ item.source_account }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p>No complaints or suggestions have been logged yet.</p>
+    {% endif %}
+
+    <!-- Placeholder for Future Enhancements -->
+    <div style="margin-top: 30px; padding:15px; background-color:#f0f0f0; border-radius:5px;">
+        <h4>Future Enhancements:</h4>
+        <ul>
+            <li>Advanced filtering and sorting options.</li>
+            <li>Charts and visualizations of feedback data (e.g., trends, category distribution).</li>
+            <li>Direct links to the original email (if feasible and secure).</li>
+            <li>Status tracking for each feedback item.</li>
+        </ul>
+    </div>
+
+{% endblock %}

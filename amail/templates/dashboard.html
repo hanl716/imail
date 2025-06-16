@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Amail{% endblock %}
+
+{% block content %}
+    <h2>Dashboard</h2>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <ul class="flashes">
+        {% for category, message in messages %}
+          <li class="{{ category }}">{{ message }}</li>
+        {% endfor %}
+        </ul>
+      {% endif %}
+    {% endwith %}
+
+    <h3>Your Emails</h3>
+    {% if grouped_emails %}
+        {% for sender, email_list in grouped_emails.items() %}
+            <div class="sender-group">
+                <h4 class="sender-header">From: {{ sender }}</h4>
+                {% for email in email_list %}
+                    <div class="email-item">
+                        <div>
+                            <span class="email-subject">{{ email.subject }}</span>
+                            {% if email.category and email.category != "General" %}
+                                <span class="email-category-tag">{{ email.category }}</span>
+                            {% endif %}
+                        </div>
+                        <span class="email-date">({{ email.date }})</span>
+                        <p class="email-body-snippet">{{ email.snippet }}</p>
+                        <span class="email-source-account">Account: {{ email.account_name }}</span>
+
+                        {% if email.reply_suggestions %}
+                        <div class="reply-suggestions-container">
+                            <strong>Quick Replies:</strong>
+                            {% for suggestion in email.reply_suggestions %}
+                                <button class="reply-suggestion-btn" onclick="alert('Reply: {{ suggestion | e }}')">{{ suggestion }}</button>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </div>
+        {% endfor %}
+    {% else %}
+        <p>No emails to display, or there was an issue fetching them. Check flashed messages above if any.</p>
+    {% endif %}
+{% endblock %}
